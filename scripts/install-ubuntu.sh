@@ -12,6 +12,7 @@
 # Options:
 #   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
 #   --host-port PORT   Host port for Caddy (80/443) if different (default: 80/443)
+#   --http-port PORT   Host port for UI (SHIPYARD_UI_PORT) if different (default: 8080)
 #   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
 #   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
 #   --no-start         Install everything but do not build/start the stack
@@ -24,6 +25,7 @@ REPO_URL="https://github.com/iant89/Shipyard.git"
 DEFAULT_REPO_DIR="/opt/shipyard"
 
 HOST_PORT=""
+HTTP_PORT=""
 PUBLIC_URL=""
 REPO_DIR=""
 DEV=0
@@ -49,6 +51,7 @@ Usage:
 Options:
   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
   --host-port PORT   Host port for Caddy (80/443) if different (default: 80/443)
+  --http-port PORT   Host port for UI (SHIPYARD_UI_PORT) if different (default: 8080)
   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
   --no-start         Install everything but do not build/start the stack
@@ -63,6 +66,8 @@ while [[ $# -gt 0 ]]; do
     --public-url=*) PUBLIC_URL="${1#*=}"; shift ;;
     --host-port) HOST_PORT="${2:?--host-port needs a value}"; shift 2 ;;
     --host-port=*) HOST_PORT="${1#*=}"; shift ;;
+    --http-port) HTTP_PORT="${2:?--http-port needs a value}"; shift 2 ;;
+    --http-port=*) HTTP_PORT="${1#*=}"; shift ;;
     --repo-dir) REPO_DIR="${2:?--repo-dir needs a value}"; shift 2 ;;
     --repo-dir=*) REPO_DIR="${1#*=}"; shift ;;
     --dev) DEV=1; shift ;;
@@ -210,9 +215,16 @@ if [[ ! -f .env ]]; then
   log "Created .env from config/shipyard.env.example"
 fi
 
+# Override SHIPYARD_UI_PORT if --http-port is specified
+if [[ -n "$HTTP_PORT" ]]; then
+  set_env SHIPYARD_UI_PORT "$HTTP_PORT"
+  log "Set SHIPYARD_UI_PORT to $HTTP_PORT"
+fi
+
+ui_port_default="$(get_env SHIPYARD_UI_PORT)"
+ui_port_default="${ui_port_default:-8080}"
+
 if [[ -z "$PUBLIC_URL" ]]; then
-  ui_port_default="$(get_env SHIPYARD_UI_PORT)"
-  ui_port_default="${ui_port_default:-8080}"
   prompt PUBLIC_URL "Public URL of the platform (used for webhook URLs)" "http://$(lan_ip):${ui_port_default}"
 fi
 set_env SHIPYARD_PUBLIC_URL "$PUBLIC_URL"
@@ -229,11 +241,10 @@ chmod 600 .env
 
 # ---------------------------------------------------------------- firewall
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-  ui_port="${ui_port_default:-8080}"
-  log "ufw is active — allowing ${HOST_PORT:-80}/tcp, ${HOST_PORT:-443}/tcp, ${ui_port}/tcp"
+  log "ufw is active — allowing ${HOST_PORT:-80}/tcp, ${HOST_PORT:-443}/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp"
   ufw allow "${HOST_PORT:-80}/tcp" >/dev/null
   ufw allow "${HOST_PORT:-443}/tcp" >/dev/null
-  ufw allow "${ui_port}/tcp" >/dev/null
+  ufw allow "${HTTP_PORT:-${ui_port_default}}/tcp" >/dev/null
 fi
 
 # ---------------------------------------------------------------- start
@@ -241,30 +252,33 @@ if [[ $START -eq 1 ]]; then
   if command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ':(${HOST_PORT:-80}|${HOST_PORT:-443}) '; then
     warn "ports ${HOST_PORT:-80}/${HOST_PORT:-443} already have listeners — the Caddy service may fail to start"
   fi
+  if [[ -n "$HTTP_PORT" ]] && command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ":${HTTP_PORT} "; then
+    warn "port ${HTTP_PORT} already has a listener — the Shipyard UI service may fail to start"
+  fi
 
-  # Update docker-compose.yml to use HOST_PORT for Caddy ports if specified
+  # Update docker-compose.yml to use HOST_PORT and HTTP_PORT if specified
   if [[ -n "$HOST_PORT" ]]; then
-    log "Adjusting docker-compose.yml to use host port $HOST_PORT"
-    # Replace 80:80 and 443:443 with $HOST_PORT:$HOST_PORT and $HOST_PORT:$HOST_PORT (or similar)
-    # Actually, Caddy needs 80 and 443 inside the container, but host port can be different.
-    # In docker-compose.yml:
-    #   - "80:80"      -> "- "${HOST_PORT}:80""
-    #   - "443:443"    -> "- "${HOST_PORT}:443""
-    #   - "443:443/udp" -> "- "${HOST_PORT}:443/udp""
-    # We use sed to replace the host part of the port mapping.
+    log "Adjusting docker-compose.yml to use host port $HOST_PORT for Caddy"
     sed -i "s/\"80:80\"/\"${HOST_PORT}:80\"/g" docker-compose.yml
     sed -i "s/\"443:443\"/\"${HOST_PORT}:443\"/g" docker-compose.yml
     sed -i "s/\"443:443\/udp\"/\"${HOST_PORT}:443\/udp\"/g" docker-compose.yml
   fi
 
+  if [[ -n "$HTTP_PORT" ]]; then
+    log "Adjusting docker-compose.yml to use host port $HTTP_PORT for Shipyard UI"
+    # Replace ${SHIPYARD_UI_PORT:-8080}:8080 with ${HTTP_PORT}:8080
+    sed -i "s/\"\\${SHIPYARD_UI_PORT:-8080}:8080\"/\"${HTTP_PORT}:8080\"/g" docker-compose.yml
+    # Also replace literal 8080:8080 if the template was changed or hardcoded elsewhere
+    sed -i "s/\"8080:8080\"/\"${HTTP_PORT}:8080\"/g" docker-compose.yml
+  fi
+
   log "Building and starting Shipyard (the first build takes a few minutes)..."
   docker compose up -d --build
 
-  ui_port="${ui_port_default:-8080}"
   log "Waiting for the API to become healthy..."
   healthy=0
   for _ in $(seq 1 60); do
-    if curl -fsS "http://localhost:${ui_port}/actuator/health" >/dev/null 2>&1; then
+    if curl -fsS "http://localhost:${HTTP_PORT:-${ui_port_default}}/actuator/health" >/dev/null 2>&1; then
       healthy=1
       break
     fi
@@ -276,7 +290,6 @@ else
 fi
 
 # ---------------------------------------------------------------- summary
-ui_port="${ui_port_default:-8080}"
 printf '\n\033[1;32mShipyard installed.\033[0m\n'
 printf '  Location : %s\n' "$SHIPYARD_ROOT"
 printf '  UI       : %s\n' "$PUBLIC_URL"
