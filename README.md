@@ -29,6 +29,20 @@ interface running against a simulated backend in your browser.
 Requirements: a Linux server with Docker 24+ (BuildKit is used for builds) and
 ports 80/443 reachable for the domains you want to serve.
 
+On Ubuntu, one command installs Docker, clones Shipyard, writes `.env` and
+starts the stack:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iant89/Shipyard/main/scripts/install-ubuntu.sh | sudo bash
+```
+
+Pass options after `-s --`, e.g.
+`... | sudo bash -s -- --public-url https://shipyard.example.com`, or `--dev`
+to also install OpenJDK 21, Maven and Node 22 for development
+(`scripts/install-ubuntu.sh --help` for all options).
+
+Or do it manually on any Linux host:
+
 ```bash
 git clone https://github.com/iant89/Shipyard.git && cd Shipyard
 cp config/shipyard.env.example .env      # set SHIPYARD_PUBLIC_URL at least

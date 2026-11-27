@@ -1,0 +1,271 @@
+#!/usr/bin/env bash
+# Shipyard installer for Ubuntu (20.04 / 22.04 / 24.04).
+#
+# Installs every host dependency (Docker 24+ with BuildKit and the Compose
+# plugin, git), clones Shipyard, writes .env and starts the stack.
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/iant89/Shipyard/main/scripts/install-ubuntu.sh | sudo bash
+#   curl -fsSL .../install-ubuntu.sh | sudo bash -s -- --public-url https://shipyard.example.com
+#   sudo scripts/install-ubuntu.sh --dev          # also install the dev toolchain
+#
+# Options:
+#   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
+#   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
+#   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
+#   --no-start         Install everything but do not build/start the stack
+#   --yes, -y          Non-interactive; accept all defaults
+#   --help, -h         Show this help
+
+set -euo pipefail
+
+REPO_URL="https://github.com/iant89/Shipyard.git"
+DEFAULT_REPO_DIR="/opt/shipyard"
+
+PUBLIC_URL=""
+REPO_DIR=""
+DEV=0
+START=1
+ASSUME_YES=0
+
+log()  { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Shipyard installer for Ubuntu (20.04 / 22.04 / 24.04).
+
+Installs every host dependency (Docker 24+ with BuildKit and the Compose
+plugin, git), clones Shipyard, writes .env and starts the stack.
+
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/iant89/Shipyard/main/scripts/install-ubuntu.sh | sudo bash
+  curl -fsSL .../install-ubuntu.sh | sudo bash -s -- --public-url https://shipyard.example.com
+  sudo scripts/install-ubuntu.sh --dev          # also install the dev toolchain
+
+Options:
+  --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
+  --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
+  --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
+  --no-start         Install everything but do not build/start the stack
+  --yes, -y          Non-interactive; accept all defaults
+  --help, -h         Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --public-url) PUBLIC_URL="${2:?--public-url needs a value}"; shift 2 ;;
+    --public-url=*) PUBLIC_URL="${1#*=}"; shift ;;
+    --repo-dir) REPO_DIR="${2:?--repo-dir needs a value}"; shift 2 ;;
+    --repo-dir=*) REPO_DIR="${1#*=}"; shift ;;
+    --dev) DEV=1; shift ;;
+    --no-start) START=0; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "unknown option: $1 (see --help)" ;;
+  esac
+done
+
+# ---------------------------------------------------------------- privileges
+if [[ $EUID -ne 0 ]]; then
+  # Re-exec through sudo only when we are a real file; when piped on stdin
+  # ($0 is "bash") the caller must already be root.
+  if [[ "$0" != "bash" && -f "$0" ]]; then
+    command -v sudo >/dev/null || die "root privileges required (sudo not found)"
+    exec sudo -E bash "$0" "$@"
+  fi
+  die "run with sudo: curl -fsSL https://raw.githubusercontent.com/iant89/Shipyard/main/scripts/install-ubuntu.sh | sudo bash"
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+
+# ---------------------------------------------------------------- os check
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  [[ "${ID:-}" == "ubuntu" ]] || warn "this installer targets Ubuntu; detected ${ID:-unknown} — continuing anyway"
+else
+  warn "/etc/os-release not found; cannot verify the OS"
+fi
+
+# ---------------------------------------------------------------- helpers
+# Prompt on the terminal (works even when the script itself is piped on stdin).
+# usage: prompt VAR "label" "default"
+prompt() {
+  local __var="$1" __label="$2" __default="$3" __reply=""
+  if [[ $ASSUME_YES -eq 0 && -r /dev/tty ]]; then
+    read -r -p "$__label [$__default]: " __reply </dev/tty || __reply=""
+  fi
+  printf -v "$__var" '%s' "${__reply:-$__default}"
+}
+
+# set_env KEY VALUE — set (or append) a key in the project .env
+set_env() {
+  local key="$1" value="$2"
+  value="${value//&/\\&}"
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=${value}|" .env
+  else
+    printf '%s=%s\n' "$key" "$value" >>.env
+  fi
+}
+
+get_env() {
+  grep -E "^$1=" .env | tail -n1 | cut -d= -f2- || true
+}
+
+lan_ip() {
+  local out=""
+  out="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<NF;i++) if ($i=="src") print $(i+1)}' | head -n1)" || out=""
+  if [[ -z "$out" ]]; then
+    out="$(hostname -I 2>/dev/null | awk '{print $1}')" || out=""
+  fi
+  echo "${out:-localhost}"
+}
+
+# ---------------------------------------------------------------- base packages
+log "Installing base packages (git, curl, ca-certificates, gnupg)"
+apt-get update -y -qq
+apt-get install -y -qq ca-certificates curl gnupg git >/dev/null
+
+# ---------------------------------------------------------------- docker
+docker_major() {
+  docker --version 2>/dev/null | grep -oE '[0-9]+' | head -n1 || echo 0
+}
+
+if command -v docker >/dev/null && docker compose version >/dev/null 2>&1 && [[ "$(docker_major)" -ge 24 ]]; then
+  log "Docker $(docker --version | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1) with Compose plugin already installed"
+else
+  log "Installing Docker Engine, BuildKit and the Compose plugin"
+  # Remove distro-packaged Docker so docker-ce can take over (docs.docker.com).
+  apt-get remove -y -qq docker.io docker-doc docker-compose podman-docker containerd runc >/dev/null 2>&1 || true
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${codename} stable" \
+    >/etc/apt/sources.list.d/docker.list
+  apt-get update -y -qq
+  apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null
+fi
+
+systemctl enable --now docker >/dev/null 2>&1 || warn "could not enable the docker service (no systemd?)"
+docker info >/dev/null 2>&1 || die "the Docker daemon is not running; check: systemctl status docker"
+
+# Allow the invoking user to run docker without sudo (takes effect at next login).
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+  usermod -aG docker "$SUDO_USER" 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------- dev toolchain
+if [[ $DEV -eq 1 ]]; then
+  log "Installing dev dependencies (OpenJDK 21, Maven, Node 22)"
+  apt-get install -y -qq openjdk-21-jdk maven >/dev/null \
+    || warn "could not install openjdk-21-jdk from apt; install Temurin 21 manually for backend development"
+  if ! command -v node >/dev/null || [[ "$(node --version | tr -d v | cut -d. -f1)" -lt 22 ]]; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 \
+      && apt-get install -y -qq nodejs >/dev/null \
+      || warn "could not install Node 22 from NodeSource; install it manually (frontend needs >= 22)"
+  fi
+fi
+
+# ---------------------------------------------------------------- source
+SHIPYARD_ROOT=""
+# 1) already inside a checkout (run from the repo root or scripts/)
+for candidate in "$PWD" "${BASH_SOURCE[0]:+$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/..}"; do
+  if [[ -n "$candidate" && -f "$candidate/docker-compose.yml" ]] && grep -q '^name: shipyard' "$candidate/docker-compose.yml" 2>/dev/null; then
+    SHIPYARD_ROOT="$(cd "$candidate" && pwd)"
+    break
+  fi
+done
+
+if [[ -n "$SHIPYARD_ROOT" ]]; then
+  log "Using existing checkout: $SHIPYARD_ROOT"
+else
+  REPO_DIR="${REPO_DIR:-$DEFAULT_REPO_DIR}"
+  if [[ -d "$REPO_DIR/.git" ]]; then
+    log "Updating $REPO_DIR"
+    git -C "$REPO_DIR" pull --ff-only --quiet
+  elif [[ -e "$REPO_DIR" ]] && [[ -n "$(ls -A "$REPO_DIR" 2>/dev/null)" ]]; then
+    die "$REPO_DIR exists and is not a Shipyard checkout; remove it or pass --repo-dir"
+  else
+    log "Cloning Shipyard into $REPO_DIR"
+    git clone --depth 1 "$REPO_URL" "$REPO_DIR"
+  fi
+  SHIPYARD_ROOT="$REPO_DIR"
+fi
+
+cd "$SHIPYARD_ROOT"
+
+# ---------------------------------------------------------------- .env
+if [[ ! -f .env ]]; then
+  cp config/shipyard.env.example .env
+  log "Created .env from config/shipyard.env.example"
+fi
+
+if [[ -z "$PUBLIC_URL" ]]; then
+  ui_port_default="$(get_env SHIPYARD_UI_PORT)"
+  ui_port_default="${ui_port_default:-8080}"
+  prompt PUBLIC_URL "Public URL of the platform (used for webhook URLs)" "http://$(lan_ip):${ui_port_default}"
+fi
+set_env SHIPYARD_PUBLIC_URL "$PUBLIC_URL"
+
+if [[ "$PUBLIC_URL" == https://* && -z "$(get_env SHIPYARD_ACME_EMAIL)" ]]; then
+  ACME_EMAIL=""
+  prompt ACME_EMAIL "Email for Let's Encrypt (empty to skip)" ""
+  if [[ -n "$ACME_EMAIL" ]]; then
+    set_env SHIPYARD_ACME_EMAIL "$ACME_EMAIL"
+  fi
+fi
+
+chmod 600 .env
+
+# ---------------------------------------------------------------- firewall
+if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
+  ui_port="$(get_env SHIPYARD_UI_PORT)"; ui_port="${ui_port:-8080}"
+  log "ufw is active — allowing 80/tcp, 443/tcp, ${ui_port}/tcp"
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443/tcp >/dev/null
+  ufw allow "${ui_port}/tcp" >/dev/null
+fi
+
+# ---------------------------------------------------------------- start
+if [[ $START -eq 1 ]]; then
+  if command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ':(80|443) '; then
+    warn "ports 80/443 already have listeners — the Caddy service may fail to start"
+  fi
+
+  log "Building and starting Shipyard (the first build takes a few minutes)..."
+  docker compose up -d --build
+
+  ui_port="$(get_env SHIPYARD_UI_PORT)"; ui_port="${ui_port:-8080}"
+  log "Waiting for the API to become healthy..."
+  healthy=0
+  for _ in $(seq 1 60); do
+    if curl -fsS "http://localhost:${ui_port}/actuator/health" >/dev/null 2>&1; then
+      healthy=1
+      break
+    fi
+    sleep 3
+  done
+  [[ $healthy -eq 1 ]] || warn "health check still failing; see: docker compose logs -f shipyard"
+else
+  log "Skipping start (--no-start); run 'docker compose up -d --build' in $SHIPYARD_ROOT when ready"
+fi
+
+# ---------------------------------------------------------------- summary
+ui_port="$(get_env SHIPYARD_UI_PORT)"; ui_port="${ui_port:-8080}"
+printf '\n\033[1;32mShipyard installed.\033[0m\n'
+printf '  Location : %s\n' "$SHIPYARD_ROOT"
+printf '  UI       : %s\n' "$PUBLIC_URL"
+printf '  Next     : open the URL and create the administrator account\n'
+printf '  Logs     : cd %s && docker compose logs -f shipyard\n' "$SHIPYARD_ROOT"
+printf '  Stop     : cd %s && docker compose down\n' "$SHIPYARD_ROOT"
+backup_dir="$(get_env SHIPYARD_HOST_DATA)"
+printf '  Backup   : %s/database/ (shipyard.db + secret.key)\n' "${backup_dir:-/var/lib/shipyard}"
+if [[ $DEV -eq 1 ]]; then
+  printf '  Dev      : java 21 + maven + node installed; run scripts/dev.sh\n'
+fi
+printf '\n'
