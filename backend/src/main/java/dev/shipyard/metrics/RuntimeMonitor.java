@@ -34,7 +34,7 @@ public class RuntimeMonitor {
     private final ContainerRuntime runtime;
     private final EventBus events;
     private final PlatformProperties props;
-    private final Map<String, Integer> lastRestarts = new java.util.concurrent.ConcurrentHashMap<>();
+    private final CrashTracker tracker;
 
     public RuntimeMonitor(ApplicationRepository applications, DeploymentRepository deployments, ServiceRepository services,
                           ContainerRuntime runtime, EventBus events, PlatformProperties props) {
@@ -44,6 +44,8 @@ public class RuntimeMonitor {
         this.runtime = runtime;
         this.events = events;
         this.props = props;
+        // N restarts within 10 minutes = crash loop; recovered after 2 minutes without a restart.
+        this.tracker = new CrashTracker(props.crashRestartThreshold(), 10 * 60_000L, 2 * 60_000L);
     }
 
     @Scheduled(fixedDelay = 10_000, initialDelay = 10_000)
@@ -58,11 +60,10 @@ public class RuntimeMonitor {
             int restarts = info.map(ContainerInfo::restartCount).orElse(0);
             services.setRestartCount(d.serviceId(), restarts);
             boolean up = info.map(ContainerInfo::running).orElse(false);
-            Integer previous = lastRestarts.put(d.id(), restarts);
-            boolean restartedSinceLastCheck = previous != null && restarts > previous;
-            // Crashing: the container is gone/exited, or it keeps restarting and has passed the threshold.
-            boolean crashed = info.isEmpty() || (!up && "exited".equals(info.get().status()))
-                    || (restartedSinceLastCheck && restarts >= props.crashRestartThreshold());
+            boolean exited = info.map(i -> !i.running() && ("exited".equals(i.status()) || "dead".equals(i.status()))).orElse(false);
+            CrashTracker.Verdict verdict = tracker.observe(d.id(), info.isPresent(), up, exited, restarts,
+                    app.status() == ApplicationStatus.CRASHED, System.currentTimeMillis());
+            boolean crashed = verdict == CrashTracker.Verdict.CRASHED;
             if (crashed && app.status() != ApplicationStatus.CRASHED) {
                 applications.updateStatus(app.id(), ApplicationStatus.CRASHED);
                 deployments.setRuntimeStatus(d.id(), "CRASHED");
@@ -70,7 +71,7 @@ public class RuntimeMonitor {
                 events.publish(EventTypes.APPLICATION_CRASHED, app.id(), d.id(), Map.of("restartCount", restarts,
                         "containerStatus", info.map(ContainerInfo::status).orElse("missing")));
                 events.publish(EventTypes.APPLICATION_UPDATED, app.id(), null, Map.of("status", "CRASHED"));
-            } else if (!crashed && up && app.status() == ApplicationStatus.CRASHED) {
+            } else if (verdict == CrashTracker.Verdict.HEALTHY) {
                 applications.updateStatus(app.id(), ApplicationStatus.RUNNING);
                 deployments.setRuntimeStatus(d.id(), "RUNNING");
                 events.publish(EventTypes.APPLICATION_STARTED, app.id(), d.id(), Map.of("recovered", true));

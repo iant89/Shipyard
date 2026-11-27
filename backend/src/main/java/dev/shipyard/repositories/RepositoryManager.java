@@ -144,7 +144,10 @@ public class RepositoryManager {
             ProcessRunner.check(List.of(props.gitBinary(), "-C", repoDir.toString(), "archive", "--format=tar", "-o", tar.toString(), sha),
                     null, Map.of(), Duration.ofMinutes(5));
             cancel.throwIfCancelled();
-            ProcessRunner.check(List.of("tar", "-xf", tar.toString(), "-C", target.toString()), null, Map.of(), Duration.ofMinutes(5));
+            // -m: give every file the extraction time instead of the commit time. BuildKit decides
+            // whether context files changed by size and mtime; with commit times, two commits made in
+            // the same second with a same-size edit look identical and the old files would be reused.
+            ProcessRunner.check(List.of("tar", "-x", "-m", "-f", tar.toString(), "-C", target.toString()), null, Map.of(), Duration.ofMinutes(5));
         } finally {
             try { Files.deleteIfExists(tar); } catch (java.io.IOException ignored) { }
         }
