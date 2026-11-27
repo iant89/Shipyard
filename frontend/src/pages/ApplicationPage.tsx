@@ -17,6 +17,7 @@ import { EnvironmentTab } from './application/EnvironmentTab';
 import { DomainsTab } from './application/DomainsTab';
 import { WebhookPage } from './WebhookPage';
 import { SettingsTab } from './application/SettingsTab';
+import { appHref } from '../app/platformMode';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -66,7 +67,7 @@ export function ApplicationPage() {
       title={a.name}
       subtitle={a.repository ? `${a.repository.fullName} · ${a.repository.branch}` : undefined}
       titleAddon={<ApplicationStatus status={a.status} />}
-      breadcrumbs={[{ label: 'Applications', href: '/applications', onClick: (e) => { e.preventDefault(); navigate('/applications'); } }, { label: a.name }]}
+      breadcrumbs={[{ label: 'Applications', href: appHref('/applications'), onClick: (e) => { e.preventDefault(); navigate('/applications'); } }, { label: a.name }]}
       actions={
         <>
           <Button variant="primary" icon={<Icon name="upload" />} onClick={() => setDeployOpen(true)}>Deploy</Button>

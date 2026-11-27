@@ -14,6 +14,19 @@ interface Stream {
   listeners: Set<Listener>;
 }
 
+/** Alternative event source (the GitHub Pages demo's simulated backend). */
+export interface EventTransport {
+  subscribe(applicationId: string | null, listener: Listener): () => void;
+  streamLogs(applicationId: string, tail: number, onLine: (line: string) => void): () => void;
+}
+
+let transport: EventTransport | null = null;
+
+export function setEventTransport(t: EventTransport) {
+  transport = t;
+  setConnected(true);
+}
+
 const streams = new Map<string, Stream>();
 const connectionListeners = new Set<(connected: boolean) => void>();
 let connected = false;
@@ -30,6 +43,7 @@ function setConnected(value: boolean) {
  * listener leaves. EventSource reconnects automatically.
  */
 export function subscribe(applicationId: string | null, listener: Listener): () => void {
+  if (transport) return transport.subscribe(applicationId, listener);
   const key = applicationId ?? '*';
   let stream = streams.get(key);
   if (!stream) {
@@ -75,4 +89,28 @@ export function closeAllStreams() {
   streams.forEach((s) => s.source.close());
   streams.clear();
   setConnected(false);
+}
+
+/**
+ * Follows an application's container logs. Returns a function that stops
+ * the stream. {@code onState} reports connection state for the UI.
+ */
+export function streamApplicationLogs(
+  applicationId: string,
+  tail: number,
+  onLine: (line: string) => void,
+  onState: (state: 'connecting' | 'streaming' | 'error') => void,
+): () => void {
+  if (transport) {
+    onState('streaming');
+    return transport.streamLogs(applicationId, tail, onLine);
+  }
+  const source = new EventSource(`/api/applications/${encodeURIComponent(applicationId)}/logs/stream?tail=${tail}`, { withCredentials: true });
+  source.addEventListener('log', (e) => {
+    onState('streaming');
+    onLine((e as MessageEvent).data);
+  });
+  source.onopen = () => onState('streaming');
+  source.onerror = () => onState(source.readyState === EventSource.CLOSED ? 'error' : 'connecting');
+  return () => source.close();
 }

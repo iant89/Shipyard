@@ -10,6 +10,7 @@ import { BuildLogViewer } from '../components/BuildLogViewer';
 import { SourceBadge } from '../components/SourceBadge';
 import { CommitRef } from '../components/CommitRef';
 import { duration, formatDateTime, humanize } from '../services/format';
+import { appHref } from '../app/platformMode';
 
 /** Deployment details: pipeline, metadata and live build/deployment logs. */
 export function DeploymentPage() {
@@ -36,9 +37,9 @@ export function DeploymentPage() {
       subtitle={`${a?.name ?? ''} · ${d.branch}`}
       titleAddon={<DeploymentStatus status={d.status} />}
       breadcrumbs={[
-        { label: 'Applications', href: '/applications', onClick: (e) => { e.preventDefault(); navigate('/applications'); } },
-        { label: a?.name ?? 'Application', href: `/applications/${id}`, onClick: appCrumb },
-        { label: 'Deployments', href: `/applications/${id}/deployments`, onClick: (e) => { e.preventDefault(); navigate(`/applications/${id}/deployments`); } },
+        { label: 'Applications', href: appHref('/applications'), onClick: (e) => { e.preventDefault(); navigate('/applications'); } },
+        { label: a?.name ?? 'Application', href: appHref(`/applications/${id}`), onClick: appCrumb },
+        { label: 'Deployments', href: appHref(`/applications/${id}/deployments`), onClick: (e) => { e.preventDefault(); navigate(`/applications/${id}/deployments`); } },
         { label: `#${d.number}` },
       ]}
       actions={

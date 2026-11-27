@@ -1,4 +1,5 @@
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
+import { platformMode } from './platformMode';
 import { BusyIndicator, ThemeProvider, ToastProvider } from '@enterprise-ui/react';
 import { PreferencesProvider, usePreferences } from '../state/preferences';
 import { SessionProvider, useSession } from '../state/session';
@@ -19,13 +20,14 @@ function Gate() {
 
 function Themed() {
   const { theme, density } = usePreferences();
+  const Router = platformMode.demo ? HashRouter : BrowserRouter;
   return (
     <ThemeProvider theme={theme} density={density} style={{ minHeight: '100vh' }}>
       <ToastProvider>
         <SessionProvider>
-          <BrowserRouter>
+          <Router>
             <Gate />
-          </BrowserRouter>
+          </Router>
         </SessionProvider>
       </ToastProvider>
     </ThemeProvider>

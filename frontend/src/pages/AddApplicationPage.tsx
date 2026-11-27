@@ -7,6 +7,7 @@ import {
 import { api, errorMessage, type ServiceSettings } from '../services/api';
 import type { DetectionPreview } from '../services/types';
 import { humanize, shortSha } from '../services/format';
+import { appHref } from '../app/platformMode';
 
 interface Draft {
   name: string;
@@ -129,7 +130,7 @@ export function AddApplicationPage() {
     <Page
       title="Add application"
       subtitle="Give Shipyard a Git repository and it will host it"
-      breadcrumbs={[{ label: 'Applications', href: '/applications', onClick: (e) => { e.preventDefault(); navigate('/applications'); } }, { label: 'Add application' }]}
+      breadcrumbs={[{ label: 'Applications', href: appHref('/applications'), onClick: (e) => { e.preventDefault(); navigate('/applications'); } }, { label: 'Add application' }]}
       width="contained"
     >
       <Wizard

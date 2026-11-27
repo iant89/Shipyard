@@ -9,6 +9,7 @@ import { useWebhook, useWebhookEvents } from '../hooks/useWebhook';
 import { useAsyncAction } from '../hooks/useAsyncAction';
 import type { WebhookEvent, WebhookTestResult } from '../services/types';
 import { formatDateTime, humanize, relativeTime, shortSha } from '../services/format';
+import { appHref } from '../app/platformMode';
 
 const eventTone: Record<WebhookEvent['status'], Tone> = {
   RECEIVED: 'information', QUEUED: 'information', PROCESSING: 'information', DEPLOYED: 'success', IGNORED: 'neutral', FAILED: 'error',
@@ -63,7 +64,7 @@ export function WebhookPage({ applicationId }: { applicationId: string }) {
               { term: 'Last event', description: w.lastEvent ? `${formatDateTime(w.lastEvent.receivedAt)} (${relativeTime(w.lastEvent.receivedAt)})` : 'None received yet' },
               { term: 'Last commit', description: w.lastEvent?.commitSha ? <code className="sy-mono">{shortSha(w.lastEvent.commitSha)}</code> : '–' },
               { term: 'Last deployment', description: w.lastDeployment
-                ? <Link href={`/applications/${applicationId}/deployments/${w.lastDeployment.id}`} onClick={(e) => { e.preventDefault(); navigate(`/applications/${applicationId}/deployments/${w.lastDeployment!.id}`); }}>#{w.lastDeployment.number}</Link>
+                ? <Link href={appHref(`/applications/${applicationId}/deployments/${w.lastDeployment.id}`)} onClick={(e) => { e.preventDefault(); navigate(`/applications/${applicationId}/deployments/${w.lastDeployment!.id}`); }}>#{w.lastDeployment.number}</Link>
                 : '–' },
               { term: 'Last deployment status', description: w.lastDeployment ? humanize(w.lastDeployment.status) : '–' },
             ]}
