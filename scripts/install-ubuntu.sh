@@ -267,7 +267,7 @@ if [[ $START -eq 1 ]]; then
   if [[ -n "$HTTP_PORT" ]]; then
     log "Adjusting docker-compose.yml to use host port $HTTP_PORT for Shipyard UI"
     # Replace ${SHIPYARD_UI_PORT:-8080}:8080 with ${HTTP_PORT}:8080
-    sed -i "s/\"\\${SHIPYARD_UI_PORT:-8080}:8080\"/\"${HTTP_PORT}:8080\"/g" docker-compose.yml
+    sed -i 's/"\${SHIPYARD_UI_PORT:-8080}:8080"/"'${HTTP_PORT}':8080"/g' docker-compose.yml
     # Also replace literal 8080:8080 if the template was changed or hardcoded elsewhere
     sed -i "s/\"8080:8080\"/\"${HTTP_PORT}:8080\"/g" docker-compose.yml
   fi
