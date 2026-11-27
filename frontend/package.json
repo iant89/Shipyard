@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:pages": "tsc -p tsconfig.json --noEmit && vite build --config vite.pages.config.ts",
+    "dev:pages": "vite --config vite.pages.config.ts"
   },
   "dependencies": {
     "@enterprise-ui/react": "file:vendor/enterprise-ui-react-0.1.0.tgz",

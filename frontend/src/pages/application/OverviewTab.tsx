@@ -9,6 +9,7 @@ import { formatBytes, formatDateTime, formatPercent, formatRate, humanize, relat
 import { ApplicationStatus } from '../../components/ApplicationStatus';
 import { DeploymentStatus, deploymentTone } from '../../components/DeploymentStatus';
 import { CommitRef } from '../../components/CommitRef';
+import { appHref } from '../../app/platformMode';
 
 /** Object page sections: Overview, Runtime, Deployment, Automation (spec section 14). */
 export function OverviewTab({ detail }: { detail: ApplicationDetail }) {
@@ -33,7 +34,7 @@ export function OverviewTab({ detail }: { detail: ApplicationDetail }) {
               { term: 'Repository', description: a.repository ? <Link href={a.repository.url.replace(/\.git$/, '')} target="_blank" rel="noreferrer">{a.repository.fullName}</Link> : '–' },
               { term: 'Branch', description: a.repository?.branch ?? '–' },
               { term: 'Current commit', description: current ? <CommitRef sha={current.commitSha} message={current.commitMessage} repositoryUrl={a.repository?.url} /> : '–' },
-              { term: 'Current deployment', description: current ? <Link href={`/applications/${a.id}/deployments/${current.id}`} onClick={(e) => { e.preventDefault(); navigate(`/applications/${a.id}/deployments/${current.id}`); }}>#{current.number}</Link> : 'None' },
+              { term: 'Current deployment', description: current ? <Link href={appHref(`/applications/${a.id}/deployments/${current.id}`)} onClick={(e) => { e.preventDefault(); navigate(`/applications/${a.id}/deployments/${current.id}`); }}>#{current.number}</Link> : 'None' },
               { term: 'Domain', description: a.urls.length ? a.urls.map((u) => <div key={u}><Link href={u} target="_blank" rel="noreferrer">{u.replace(/^https?:\/\//, '')}</Link></div>) : <Button size="sm" variant="tertiary" onClick={() => navigate(`/applications/${a.id}/domains`)}>Add a domain</Button> },
             ]}
           />
@@ -67,7 +68,7 @@ export function OverviewTab({ detail }: { detail: ApplicationDetail }) {
             <DescriptionList
                 columns={2}
                 items={[
-                  { term: 'Deployment', description: <Link href={`/applications/${a.id}/deployments/${latest.id}`} onClick={(e) => { e.preventDefault(); navigate(`/applications/${a.id}/deployments/${latest.id}`); }}>#{latest.number}</Link> },
+                  { term: 'Deployment', description: <Link href={appHref(`/applications/${a.id}/deployments/${latest.id}`)} onClick={(e) => { e.preventDefault(); navigate(`/applications/${a.id}/deployments/${latest.id}`); }}>#{latest.number}</Link> },
                   { term: 'Commit', description: <CommitRef sha={latest.commitSha} message={latest.commitMessage} repositoryUrl={a.repository?.url} /> },
                   { term: 'Build', description: humanize(latest.buildStatus) },
                   { term: 'Source', description: humanize(latest.source) },

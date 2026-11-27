@@ -3,6 +3,7 @@ import { Bar, Button, Card, CopyButton, EmptyState, Icon, SearchField, StatusInd
 import { api, errorMessage } from '../../services/api';
 import type { ApplicationDetail, LogLine } from '../../services/types';
 import { LogLines } from '../../components/BuildLogViewer';
+import { streamApplicationLogs } from '../../services/events';
 
 const MAX_LINES = 5000;
 
@@ -37,15 +38,10 @@ export function LogsTab({ detail }: { detail: ApplicationDetail }) {
     }
     setLines([]);
     setStatus('connecting');
-    const source = new EventSource(`/api/applications/${a.id}/logs/stream?tail=300`, { withCredentials: true });
-    source.addEventListener('log', (e) => {
-      setStatus('streaming');
-      const line = toLine((e as MessageEvent).data);
+    return streamApplicationLogs(a.id, 300, (text) => {
+      const line = toLine(text);
       setLines((cur) => (cur.length >= MAX_LINES ? cur.slice(cur.length - MAX_LINES + 1) : cur).concat(line));
-    });
-    source.onopen = () => setStatus('streaming');
-    source.onerror = () => setStatus(source.readyState === EventSource.CLOSED ? 'error' : 'connecting');
-    return () => source.close();
+    }, setStatus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.id, current?.id, live]);
 

@@ -7,6 +7,7 @@ import { useApplications } from '../hooks/useApplications';
 import { onConnectionChange, subscribe } from '../services/events';
 import type { PlatformEvent } from '../services/types';
 import { formatTime } from '../services/format';
+import { appHref, platformMode } from '../app/platformMode';
 
 interface Notice {
   id: string;
@@ -137,22 +138,23 @@ export function PlatformShell({ children }: { children: ReactNode }) {
             if (to) go(to)(id, event);
             else event.preventDefault();
           }}
-          footer={<NavigationItem id="settings" label="Settings" icon={<Icon name="settings" />} href="/settings" />}
+          footer={<NavigationItem id="settings" label="Settings" icon={<Icon name="settings" />} href={appHref("/settings")} />}
         >
           <NavigationGroup label="Application Platform">
-            <NavigationItem id="dashboard" label="Dashboard" icon={<Icon name="home" />} href="/" />
+            <NavigationItem id="dashboard" label="Dashboard" icon={<Icon name="home" />} href={appHref("/")} />
             <NavigationItem id="applications" label="Applications" icon={<Icon name="product" />} defaultExpanded>
-              <NavigationItem id="apps-all" label="All applications" href="/applications" />
-              <NavigationItem id="apps-running" label="Running" href="/applications?status=RUNNING" badge={running || undefined} />
-              <NavigationItem id="apps-failed" label="Failed" href="/applications?status=FAILED" badge={failed || undefined} />
+              <NavigationItem id="apps-all" label="All applications" href={appHref("/applications")} />
+              <NavigationItem id="apps-running" label="Running" href={appHref("/applications?status=RUNNING")} badge={running || undefined} />
+              <NavigationItem id="apps-failed" label="Failed" href={appHref("/applications?status=FAILED")} badge={failed || undefined} />
             </NavigationItem>
-            <NavigationItem id="deployments" label="Deployments" icon={<Icon name="process" />} href="/deployments" />
-            <NavigationItem id="infrastructure" label="Infrastructure" icon={<Icon name="it-host" />} href="/infrastructure" />
-            <NavigationItem id="activity" label="Activity" icon={<Icon name="history" />} href="/activity" />
+            <NavigationItem id="deployments" label="Deployments" icon={<Icon name="process" />} href={appHref("/deployments")} />
+            <NavigationItem id="infrastructure" label="Infrastructure" icon={<Icon name="it-host" />} href={appHref("/infrastructure")} />
+            <NavigationItem id="activity" label="Activity" icon={<Icon name="history" />} href={appHref("/activity")} />
           </NavigationGroup>
         </SideNavigation>
       }
     >
+      {platformMode.Banner && <platformMode.Banner />}
       {children}
     </AppShell>
   );

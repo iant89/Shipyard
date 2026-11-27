@@ -21,6 +21,9 @@ redeploys on every `git push`.
 
 Stack: Java 21 + Spring Boot, SQLite, Docker, Caddy, React + TypeScript + ENTERPRISE-UI.
 
+**[Documentation and live demo →](https://iant89.github.io/Shipyard/)** — the demo is the real
+interface running against a simulated backend in your browser.
+
 ## Quick start
 
 Requirements: a Linux server with Docker 24+ (BuildKit is used for builds) and
@@ -141,6 +144,12 @@ scripts/dev.sh                 # API on :8080, UI on http://localhost:5173
 cd backend && mvn test         # unit + end-to-end API tests
 cd frontend && npm run build   # type-check and build the UI
 ```
+
+The GitHub Pages site (`frontend/site/`) is the documentation page plus the same UI at `/demo/`
+running against `src/demo/demoBackend.ts`, a simulated backend. Build it with
+`npm run build:pages` (output in `frontend/dist-pages/`, preview with `npm run dev:pages`);
+`.github/workflows/pages.yml` publishes it on every push to `main` that touches `frontend/`.
+Enable it once under *Settings → Pages → Source: GitHub Actions*.
 
 `@enterprise-ui/react` is not published to npm yet, so the frontend depends on a
 tarball in `frontend/vendor/`. Refresh it from the ENTERPRISE-UI repository with
