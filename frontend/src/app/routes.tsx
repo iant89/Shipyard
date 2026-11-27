@@ -1,0 +1,30 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { DashboardPage } from '../pages/DashboardPage';
+import { ApplicationsPage } from '../pages/ApplicationsPage';
+import { AddApplicationPage } from '../pages/AddApplicationPage';
+import { ApplicationPage } from '../pages/ApplicationPage';
+import { DeploymentPage } from '../pages/DeploymentPage';
+import { DeploymentsPage } from '../pages/DeploymentsPage';
+import { InfrastructurePage } from '../pages/InfrastructurePage';
+import { ActivityPage } from '../pages/ActivityPage';
+import { SettingsPage } from '../pages/SettingsPage';
+import { NotFoundPage } from '../pages/NotFoundPage';
+
+/** Routes (spec section 69). Application sub-pages are tabs of the application object page. */
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardPage />} />
+      <Route path="/applications" element={<ApplicationsPage />} />
+      <Route path="/applications/new" element={<AddApplicationPage />} />
+      <Route path="/applications/:id/deployments/:deploymentId" element={<DeploymentPage />} />
+      <Route path="/applications/:id/:tab?" element={<ApplicationPage />} />
+      <Route path="/deployments" element={<DeploymentsPage />} />
+      <Route path="/infrastructure" element={<InfrastructurePage />} />
+      <Route path="/activity" element={<ActivityPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  );
+}

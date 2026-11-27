@@ -1,0 +1,139 @@
+/*
+ * Platform-specific styles. Only layout for custom components that
+ * ENTERPRISE-UI does not provide (log viewer, small helpers); every colour,
+ * size and font comes from ENTERPRISE-UI --eui-* tokens.
+ */
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+.sy-mono {
+  font-family: var(--eui-font-family-mono);
+  font-size: 0.95em;
+}
+
+.sy-stack {
+  display: grid;
+  gap: var(--eui-space-4);
+}
+
+.sy-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--eui-space-2);
+}
+
+.sy-grid-2 {
+  display: grid;
+  gap: var(--eui-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+}
+
+.sy-app-cards {
+  display: grid;
+  gap: var(--eui-space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+}
+
+.sy-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- log viewer */
+
+.sy-log {
+  margin: 0;
+  padding: var(--eui-space-3) 0;
+  background: var(--eui-color-surface-sunken);
+  border: 1px solid var(--eui-color-border-subtle);
+  border-radius: var(--eui-radius-md);
+  color: var(--eui-color-text);
+  font-family: var(--eui-font-family-mono);
+  font-size: var(--eui-font-size-xs);
+  line-height: 1.55;
+  overflow: auto;
+  min-height: 12rem;
+  max-height: 65vh;
+  tab-size: 4;
+}
+
+.sy-log[data-wrap='true'] .sy-log-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sy-log-line {
+  display: grid;
+  grid-template-columns: 4.5em auto 1fr;
+  gap: var(--eui-space-3);
+  padding: 0 var(--eui-space-3);
+}
+
+.sy-log-line:hover {
+  background: var(--eui-color-surface-hover);
+}
+
+.sy-log-no {
+  color: var(--eui-color-text-secondary);
+  text-align: end;
+  user-select: none;
+}
+
+.sy-log-time {
+  color: var(--eui-color-text-secondary);
+  user-select: none;
+}
+
+.sy-log-text {
+  white-space: pre;
+}
+
+.sy-log-line[data-level='ERROR'] {
+  background: var(--eui-color-error-subtle);
+}
+
+.sy-log-line[data-level='ERROR'] .sy-log-text {
+  color: var(--eui-color-error-text);
+}
+
+.sy-log-line[data-level='WARN'] .sy-log-text {
+  color: var(--eui-color-warning-text);
+}
+
+.sy-log-empty {
+  padding: var(--eui-space-4);
+  color: var(--eui-color-text-secondary);
+  font-family: var(--eui-font-family);
+}
+
+.sy-code-block {
+  margin: 0;
+  padding: var(--eui-space-3);
+  background: var(--eui-color-surface-sunken);
+  border: 1px solid var(--eui-color-border-subtle);
+  border-radius: var(--eui-radius-md);
+  font-family: var(--eui-font-family-mono);
+  font-size: var(--eui-font-size-xs);
+  overflow: auto;
+  max-height: 60vh;
+}
+
+.sy-auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--eui-space-4);
+  background: var(--eui-color-background);
+}
+
+.sy-auth > * {
+  width: min(100%, 26rem);
+}

@@ -1,0 +1,61 @@
+# Shipyard on a single homelab server.
+#
+#   cp config/shipyard.env.example .env   # then edit
+#   docker compose up -d --build
+#
+# Data lives in ${SHIPYARD_HOST_DATA:-/var/lib/shipyard} on the host. Back it up
+# (it contains the SQLite database and database/secret.key).
+
+name: shipyard
+
+services:
+  shipyard:
+    build: .
+    image: shipyard:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SHIPYARD_DATA_DIR: /var/lib/shipyard
+      SHIPYARD_DOCKER_NETWORK: shipyard
+      SHIPYARD_CADDY_ADMIN_URL: unix:/run/caddy-admin/admin.sock
+      SHIPYARD_PLATFORM_UPSTREAM: shipyard:8080
+    volumes:
+      # The platform drives Docker. Hosted applications never get this socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${SHIPYARD_HOST_DATA:-/var/lib/shipyard}:/var/lib/shipyard
+      - caddy-admin:/run/caddy-admin
+    ports:
+      # Direct access to the UI on the LAN (optional when SHIPYARD_PLATFORM_DOMAIN is set).
+      - "${SHIPYARD_UI_PORT:-8080}:8080"
+    networks: [shipyard]
+    depends_on: [caddy]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    # Start from the last generated configuration; on first boot use the bootstrap file.
+    command: >
+      sh -c 'f=/etc/shipyard-caddy/Caddyfile; [ -f "$$f" ] || f=/bootstrap/Caddyfile;
+             exec caddy run --config "$$f" --adapter caddyfile'
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./runtime/caddy/Caddyfile:/bootstrap/Caddyfile:ro
+      - ${SHIPYARD_HOST_DATA:-/var/lib/shipyard}/caddy:/etc/shipyard-caddy:ro
+      # Static deployments only; Caddy never sees the database or secrets.
+      - ${SHIPYARD_HOST_DATA:-/var/lib/shipyard}/deployments:/var/lib/shipyard/deployments:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-admin:/run/caddy-admin
+    networks: [shipyard]
+
+networks:
+  shipyard:
+    name: shipyard
+
+volumes:
+  caddy-data:
+  caddy-config:
+  caddy-admin:
