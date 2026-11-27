@@ -1,0 +1,21 @@
+# Optional platform.yml in an application's repository root. It overrides
+# framework detection (a Dockerfile, if present, still decides the build).
+name: my-app
+
+# static | server (optional; inferred from the fields below)
+type: server
+
+build:
+  install: npm ci
+  command: npm run build
+  test: npm test          # runs inside the build container; failure stops the deployment
+  # output: dist          # static sites: directory served by Caddy
+
+runtime:
+  command: npm start
+  port: 3000
+  # image: node:lts-alpine
+
+healthcheck:
+  type: http              # http | tcp | process | none
+  path: /health

@@ -1,0 +1,10 @@
+# Bootstrap configuration used only until Shipyard writes its first generated
+# Caddyfile. The admin API listens on a Unix socket shared with Shipyard only,
+# so hosted applications on the shipyard network cannot reconfigure Caddy.
+{
+	admin unix//run/caddy-admin/admin.sock
+}
+
+:80 {
+	respond "Shipyard is starting" 503
+}

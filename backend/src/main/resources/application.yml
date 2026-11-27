@@ -1,0 +1,61 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      timeout: 12h
+      cookie:
+        http-only: true
+        same-site: lax
+        name: SHIPYARD_SESSION
+  compression:
+    enabled: true
+
+spring:
+  application:
+    name: shipyard
+  main:
+    banner-mode: off
+  jackson:
+    default-property-inclusion: always
+  mvc:
+    async:
+      request-timeout: -1
+  servlet:
+    multipart:
+      enabled: false
+  threads:
+    virtual:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+shipyard:
+  data-dir: ${SHIPYARD_DATA_DIR:/var/lib/shipyard}
+  public-url: ${SHIPYARD_PUBLIC_URL:http://localhost:8080}
+  platform-domain: ${SHIPYARD_PLATFORM_DOMAIN:}
+  base-domain: ${SHIPYARD_BASE_DOMAIN:}
+  docker-network: ${SHIPYARD_DOCKER_NETWORK:shipyard}
+  docker-binary: ${SHIPYARD_DOCKER_BINARY:docker}
+  git-binary: ${SHIPYARD_GIT_BINARY:git}
+  caddy-admin-url: ${SHIPYARD_CADDY_ADMIN_URL:}
+  acme-email: ${SHIPYARD_ACME_EMAIL:}
+  platform-upstream: ${SHIPYARD_PLATFORM_UPSTREAM:shipyard:8080}
+  worker-threads: ${SHIPYARD_WORKER_THREADS:2}
+  retain-deployments: ${SHIPYARD_RETAIN_DEPLOYMENTS:10}
+  crash-restart-threshold: ${SHIPYARD_CRASH_RESTART_THRESHOLD:5}
+  allow-local-repositories: ${SHIPYARD_ALLOW_LOCAL_REPOSITORIES:false}
+  initial-admin-username: ${SHIPYARD_ADMIN_USERNAME:}
+  initial-admin-password: ${SHIPYARD_ADMIN_PASSWORD:}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.security: WARN
