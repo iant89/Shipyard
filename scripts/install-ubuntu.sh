@@ -11,6 +11,7 @@
 #
 # Options:
 #   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
+#   --host-port PORT   Host port for Caddy (80/443) if different (default: 80/443)
 #   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
 #   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
 #   --no-start         Install everything but do not build/start the stack
@@ -22,6 +23,7 @@ set -euo pipefail
 REPO_URL="https://github.com/iant89/Shipyard.git"
 DEFAULT_REPO_DIR="/opt/shipyard"
 
+HOST_PORT=""
 PUBLIC_URL=""
 REPO_DIR=""
 DEV=0
@@ -46,6 +48,7 @@ Usage:
 
 Options:
   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
+  --host-port PORT   Host port for Caddy (80/443) if different (default: 80/443)
   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
   --no-start         Install everything but do not build/start the stack
@@ -58,6 +61,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --public-url) PUBLIC_URL="${2:?--public-url needs a value}"; shift 2 ;;
     --public-url=*) PUBLIC_URL="${1#*=}"; shift ;;
+    --host-port) HOST_PORT="${2:?--host-port needs a value}"; shift 2 ;;
+    --host-port=*) HOST_PORT="${1#*=}"; shift ;;
     --repo-dir) REPO_DIR="${2:?--repo-dir needs a value}"; shift 2 ;;
     --repo-dir=*) REPO_DIR="${1#*=}"; shift ;;
     --dev) DEV=1; shift ;;
@@ -224,23 +229,38 @@ chmod 600 .env
 
 # ---------------------------------------------------------------- firewall
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-  ui_port="$(get_env SHIPYARD_UI_PORT)"; ui_port="${ui_port:-8080}"
-  log "ufw is active — allowing 80/tcp, 443/tcp, ${ui_port}/tcp"
-  ufw allow 80/tcp >/dev/null
-  ufw allow 443/tcp >/dev/null
+  ui_port="${ui_port_default:-8080}"
+  log "ufw is active — allowing ${HOST_PORT:-80}/tcp, ${HOST_PORT:-443}/tcp, ${ui_port}/tcp"
+  ufw allow "${HOST_PORT:-80}/tcp" >/dev/null
+  ufw allow "${HOST_PORT:-443}/tcp" >/dev/null
   ufw allow "${ui_port}/tcp" >/dev/null
 fi
 
 # ---------------------------------------------------------------- start
 if [[ $START -eq 1 ]]; then
-  if command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ':(80|443) '; then
-    warn "ports 80/443 already have listeners — the Caddy service may fail to start"
+  if command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ':(${HOST_PORT:-80}|${HOST_PORT:-443}) '; then
+    warn "ports ${HOST_PORT:-80}/${HOST_PORT:-443} already have listeners — the Caddy service may fail to start"
+  fi
+
+  # Update docker-compose.yml to use HOST_PORT for Caddy ports if specified
+  if [[ -n "$HOST_PORT" ]]; then
+    log "Adjusting docker-compose.yml to use host port $HOST_PORT"
+    # Replace 80:80 and 443:443 with $HOST_PORT:$HOST_PORT and $HOST_PORT:$HOST_PORT (or similar)
+    # Actually, Caddy needs 80 and 443 inside the container, but host port can be different.
+    # In docker-compose.yml:
+    #   - "80:80"      -> "- "${HOST_PORT}:80""
+    #   - "443:443"    -> "- "${HOST_PORT}:443""
+    #   - "443:443/udp" -> "- "${HOST_PORT}:443/udp""
+    # We use sed to replace the host part of the port mapping.
+    sed -i "s/\"80:80\"/\"${HOST_PORT}:80\"/g" docker-compose.yml
+    sed -i "s/\"443:443\"/\"${HOST_PORT}:443\"/g" docker-compose.yml
+    sed -i "s/\"443:443\/udp\"/\"${HOST_PORT}:443\/udp\"/g" docker-compose.yml
   fi
 
   log "Building and starting Shipyard (the first build takes a few minutes)..."
   docker compose up -d --build
 
-  ui_port="$(get_env SHIPYARD_UI_PORT)"; ui_port="${ui_port:-8080}"
+  ui_port="${ui_port_default:-8080}"
   log "Waiting for the API to become healthy..."
   healthy=0
   for _ in $(seq 1 60); do
@@ -256,7 +276,7 @@ else
 fi
 
 # ---------------------------------------------------------------- summary
-ui_port="$(get_env SHIPYARD_UI_PORT)"; ui_port="${ui_port:-8080}"
+ui_port="${ui_port_default:-8080}"
 printf '\n\033[1;32mShipyard installed.\033[0m\n'
 printf '  Location : %s\n' "$SHIPYARD_ROOT"
 printf '  UI       : %s\n' "$PUBLIC_URL"
