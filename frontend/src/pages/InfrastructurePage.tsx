@@ -34,10 +34,11 @@ export function InfrastructurePage() {
           </Card>
           <Card title="Reverse proxy" headerActions={i ? <StatusIndicator tone={i.caddyAdminConfigured ? 'success' : 'warning'}>{i.caddyAdminConfigured ? 'Managed' : 'Not connected'}</StatusIndicator> : undefined}>
             <DescriptionList columns={1} items={[
-              { term: 'Proxy', description: 'Caddy (automatic HTTPS)' },
+              { term: 'Proxy', description: i?.https === false ? 'Caddy (HTTPS disabled, plain HTTP)' : 'Caddy (automatic HTTPS)' },
               { term: 'Platform URL', description: i?.publicUrl ?? '–' },
               { term: 'Platform domain', description: i?.platformDomain || '–' },
               { term: 'Base domain', description: i?.baseDomain ? `*.${i.baseDomain}` : 'Not set' },
+              { term: 'HTTPS', description: i ? (i.https ? 'Enabled (automatic certificates)' : 'Disabled (plain HTTP only)') : '–' },
               { term: 'Last apply', description: caddy.data?.status ?? '–' },
             ]} />
             <div className="sy-row" style={{ marginTop: 'var(--eui-space-4)' }}>

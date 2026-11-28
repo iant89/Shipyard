@@ -53,7 +53,29 @@ public class PlatformLifecycle {
         } else {
             log.warn("Docker is not reachable; builds and server applications will fail until it is");
         }
+        clearStaleCaddyfile();
         caddy.reloadAsync();
+    }
+
+    /**
+     * Caddy starts from the generated Caddyfile, which is applied before Shipyard
+     * exists. After switching to plain HTTP that old file can still contain TLS
+     * site blocks and a pinned 443 listener, leaving Caddy on HTTPS. Remove it so
+     * Caddy falls back to the bootstrap file until the first reload.
+     */
+    private void clearStaleCaddyfile() {
+        if (props.https()) return;
+        Path file = layout.caddyDir().resolve("Caddyfile");
+        try {
+            if (!Files.exists(file)) return;
+            String config = Files.readString(file);
+            if (!config.contains("auto_https off") || config.contains("https_port")) {
+                Files.delete(file);
+                log.info("HTTPS is disabled; removed the previous Caddyfile at {} so Caddy restarts without TLS", file);
+            }
+        } catch (Exception e) {
+            log.warn("Could not inspect or remove {}", file, e);
+        }
     }
 
     /**

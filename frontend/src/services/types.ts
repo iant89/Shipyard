@@ -248,6 +248,7 @@ export interface PlatformInfo {
   dockerVersion: string | null;
   dockerNetwork: string;
   publicUrl: string;
+  https: boolean;
   platformDomain: string | null;
   baseDomain: string | null;
   dataDir: string;

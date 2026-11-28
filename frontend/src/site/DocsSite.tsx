@@ -13,6 +13,7 @@ const ENV: EnvRow[] = [
   { name: 'SHIPYARD_PUBLIC_URL', def: 'http://localhost:8080', purpose: 'Base URL used for webhook URLs' },
   { name: 'SHIPYARD_PLATFORM_DOMAIN', def: '–', purpose: 'Serve the UI through Caddy on this hostname' },
   { name: 'SHIPYARD_BASE_DOMAIN', def: '–', purpose: 'Also serve every app at <slug>.<base domain>' },
+  { name: 'SHIPYARD_HTTPS', def: 'true', purpose: 'false serves plain HTTP only (no certificates, no 443)' },
   { name: 'SHIPYARD_ACME_EMAIL', def: '–', purpose: "Let's Encrypt account email" },
   { name: 'SHIPYARD_DATA_DIR', def: '/var/lib/shipyard', purpose: 'Database, repositories, artifacts, Caddyfile' },
   { name: 'SHIPYARD_WORKER_THREADS', def: '2', purpose: 'Applications that may deploy at the same time' },

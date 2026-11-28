@@ -115,6 +115,7 @@ public class CaddyManager {
     }
 
     public String render() {
+        boolean https = props.https();
         List<CaddyRoute> routes = new ArrayList<>();
         for (Application app : applications.findAll()) {
             List<CaddyRoute.Host> hosts = new ArrayList<>();
@@ -135,7 +136,8 @@ public class CaddyManager {
                 routes.add(new CaddyRoute(app.slug(), hosts, null, current.containerName() + ":" + current.internalPort(), null));
             }
         }
-        return CaddyConfigGenerator.generate(adminDirective(), props.acmeEmail(), props.platformDomain(), props.platformUpstream(), routes);
+        return CaddyConfigGenerator.generate(adminDirective(), https, props.acmeEmail(), props.platformDomain(), props.platformUpstream(),
+                routes);
     }
 
     /** The admin directive must keep Caddy listening where the platform will reach it next time. */
