@@ -330,6 +330,9 @@ if [[ $START -eq 1 ]]; then
     log "Removing stale generated Caddyfile (HTTPS disabled)"
     rm -f "${host_data}/caddy/Caddyfile"
   fi
+  # shellcheck source=network.sh
+  source scripts/network.sh
+  shipyard_ensure_network || die "could not create the shipyard Docker network"
   SHIPYARD_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)" docker compose up -d --build --force-recreate
 
   log "Waiting for the API to become healthy..."

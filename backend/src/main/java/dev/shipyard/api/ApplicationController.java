@@ -27,6 +27,10 @@ import dev.shipyard.metrics.MetricsService;
 import dev.shipyard.repositories.GitRepositoryStore;
 import dev.shipyard.repositories.UpdateChecker;
 import dev.shipyard.runtime.ContainerInfo;
+import dev.shipyard.audit.AuditActions;
+import dev.shipyard.common.BadRequestException;
+import dev.shipyard.common.ConflictException;
+import dev.shipyard.runtime.ContainerConsole;
 import dev.shipyard.runtime.ContainerRuntime;
 import dev.shipyard.security.SecretMasker;
 import dev.shipyard.webhooks.WebhookEvent;
@@ -74,6 +78,7 @@ public class ApplicationController {
     private final DetectionService detection;
     private final EventBus events;
     private final AuditService audit;
+    private final ContainerConsole console;
     private final PlatformProperties props;
     private final UpdateChecker updates;
 
@@ -81,7 +86,7 @@ public class ApplicationController {
                                  DeploymentService deploymentService, DeploymentRepository deployments, ServiceRepository services,
                                  GitRepositoryStore repositories, DomainService domains, EnvironmentService environment,
                                  WebhookService webhooks, LogService logs, MetricsService metrics, ContainerRuntime runtime,
-                                 DetectionService detection, EventBus events, AuditService audit, PlatformProperties props,
+                                 DetectionService detection, EventBus events, AuditService audit, ContainerConsole console, PlatformProperties props,
                                  UpdateChecker updates) {
         this.applications = applications;
         this.service = service;
@@ -99,6 +104,7 @@ public class ApplicationController {
         this.detection = detection;
         this.events = events;
         this.audit = audit;
+        this.console = console;
         this.props = props;
         this.updates = updates;
     }
@@ -235,6 +241,39 @@ public class ApplicationController {
         SecretMasker masker = environment.masker(id);
         List<String> lines = runtime.logs(d.containerName(), Math.min(tail, 5000)).stream().map(masker::mask).toList();
         return Map.of("lines", lines, "container", d.containerName());
+    }
+
+    public record ExecRequest(String command, String cwd) {}
+
+    /**
+     * Console: runs one shell command in the current deployment's container.
+     * Output is masked like logs (secret environment values never reach the
+     * browser) and every command is audited.
+     */
+    @PostMapping("/{id}/exec")
+    Map<String, Object> exec(@PathVariable String id, @RequestBody ExecRequest req) {
+        var app = applications.get(id);
+        if (app.currentDeploymentId() == null) throw new ConflictException("The application has not been deployed yet");
+        Deployment d = deployments.get(app.currentDeploymentId());
+        if (d.isStatic() || d.containerName() == null) {
+            throw new BadRequestException("Static applications are served by Caddy; there is no container to run commands in");
+        }
+        ContainerInfo info = runtime.inspect(d.containerName()).orElse(null);
+        if (info == null || !info.running()) throw new ConflictException("The container " + d.containerName() + " is not running");
+        String command = req == null || req.command() == null ? "" : req.command().strip();
+        String shown = command.length() > 500 ? command.substring(0, 500) + "…" : command;
+        audit.record(AuditActions.CONTAINER_COMMAND, "APPLICATION", id, Map.of("container", d.containerName(), "command", shown));
+        ContainerConsole.Result r = console.run(d.containerName(), command, req.cwd());
+        SecretMasker masker = environment.masker(id);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("exitCode", r.exitCode());
+        m.put("output", masker.mask(r.output()));
+        m.put("cwd", r.cwd());
+        m.put("truncated", r.truncated());
+        m.put("timedOut", r.timedOut());
+        m.put("durationMs", r.durationMs());
+        m.put("container", d.containerName());
+        return m;
     }
 
     /** Live application log stream (SSE). */

@@ -68,9 +68,12 @@ public class DockerRuntime implements ContainerRuntime {
     @Override
     public void ensureNetwork(String network) {
         if (ProcessRunner.run(List.of(docker(), "network", "inspect", network), null, SHORT).ok()) return;
-        ProcessRunner.check(List.of(docker(), "network", "create", "--driver", "bridge", "--label", "dev.shipyard.managed=true", network),
-                null, Map.of(), SHORT);
-        log.info("Created docker network {}", network);
+        List<String> cmd = new ArrayList<>(List.of(docker(), "network", "create", "--driver", "bridge", "--label", "dev.shipyard.managed=true"));
+        // A fixed subnet lets applications trust their proxy (Caddy) by address range.
+        if (props.dockerSubnet() != null && !props.dockerSubnet().isBlank()) cmd.addAll(List.of("--subnet", props.dockerSubnet().strip()));
+        cmd.add(network);
+        ProcessRunner.check(cmd, null, Map.of(), SHORT);
+        log.info("Created docker network {}{}", network, props.dockerSubnet() == null || props.dockerSubnet().isBlank() ? "" : " (" + props.dockerSubnet() + ")");
     }
 
     @Override
@@ -221,8 +224,53 @@ public class DockerRuntime implements ContainerRuntime {
     }
 
     @Override
+    public ExecResult exec(String name, List<String> command, Duration timeout) {
+        List<String> cmd = new ArrayList<>(List.of(docker(), "exec", name));
+        cmd.addAll(command);
+        try {
+            ProcessRunner.Result r = ProcessRunner.run(cmd, null, timeout);
+            return new ExecResult(r.exitCode(), r.output());
+        } catch (ProcessRunner.CommandException e) {
+            return new ExecResult(-1, e.getMessage());
+        }
+    }
+
+    @Override
     public void removeImage(String tag) {
         ProcessRunner.run(List.of(docker(), "image", "rm", tag), null, SHORT);
+    }
+
+    @Override
+    public String networkSubnet(String network) {
+        ProcessRunner.Result r = ProcessRunner.run(List.of(docker(), "network", "inspect", network,
+                "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}"), null, SHORT);
+        if (!r.ok()) return null;
+        String first = r.output().strip().split("\\s+")[0];
+        return first.isEmpty() ? null : first;
+    }
+
+    @Override
+    public void ensureVolume(String name, Map<String, String> labels) {
+        if (ProcessRunner.run(List.of(docker(), "volume", "inspect", name), null, SHORT).ok()) return;
+        List<String> cmd = new ArrayList<>(List.of(docker(), "volume", "create"));
+        labels.forEach((k, v) -> cmd.addAll(List.of("--label", k + "=" + v)));
+        cmd.add(name);
+        ProcessRunner.check(cmd, null, Map.of(), SHORT);
+        log.info("Created docker volume {}", name);
+    }
+
+    @Override
+    public List<String> listVolumes(String label, String value) {
+        ProcessRunner.Result r = ProcessRunner.run(List.of(docker(), "volume", "ls", "--format", "{{.Name}}", "--filter", "label=" + label + "=" + value),
+                null, SHORT);
+        if (!r.ok()) return List.of();
+        return r.output().lines().map(String::strip).filter(s -> !s.isEmpty()).toList();
+    }
+
+    @Override
+    public void removeVolume(String name) {
+        ProcessRunner.Result r = ProcessRunner.run(List.of(docker(), "volume", "rm", name), null, SHORT);
+        if (!r.ok()) log.warn("Could not remove docker volume {}: {}", name, r.output().strip());
     }
 
     @Override

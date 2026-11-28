@@ -173,7 +173,9 @@ function detection(p: Profile, s?: ServiceConfig): DetectionResult {
     healthCheckPath: s?.healthCheckPath ?? p.health,
     healthCheckType: 'HTTP',
     source: explicit ? 'EXPLICIT' : p.strategy === 'DOCKERFILE' ? 'DOCKERFILE' : 'FRAMEWORK',
-    notes: p.strategy === 'PYTHON' ? ['Verify the Python start command; it was inferred from the project layout.'] : [],
+    notes: p.strategy === 'PYTHON' ? ['Verify the Python start command; it was inferred from the project layout.']
+      : p.strategy === 'DOCKERFILE' ? ['The Dockerfile declares VOLUME /data. Add it under Volumes to keep the data across deployments.'] : [],
+    volumes: p.strategy === 'DOCKERFILE' ? ['/data'] : [],
   };
 }
 
@@ -186,7 +188,7 @@ function serviceFor(appId: string, p: Profile, s?: ServiceSettings): ServiceConf
     packageManager: p.packageManager, runtimeImage: s?.runtimeImage ?? null, internalPort: s?.internalPort ?? null,
     healthCheckType: s?.healthCheckType ?? 'HTTP', healthCheckPath: s?.healthCheckPath ?? p.health,
     healthCheckTimeoutSeconds: s?.healthCheckTimeoutSeconds ?? 60, cpuLimit: s?.cpuLimit ?? (p.kind === 'SERVER' ? 1 : 1),
-    memoryLimitMb: s?.memoryLimitMb ?? (p.strategy === 'MAVEN' ? 1024 : 512), restartPolicy: s?.restartPolicy ?? 'unless-stopped',
+    memoryLimitMb: s?.memoryLimitMb ?? (p.strategy === 'MAVEN' ? 1024 : 512), restartPolicy: s?.restartPolicy ?? 'unless-stopped', volumes: s?.volumes ?? [],
     restartCount: 0, ...{ applicationId: appId, createdAt: t, updatedAt: t },
   } as ServiceConfig;
 }
@@ -461,6 +463,7 @@ function buildScript(a: AppState, d: Deployment) {
     { level: 'INFO', text: `Detected ${p.kind} application: ${p.framework} via ${p.strategy === 'DOCKERFILE' ? 'DOCKERFILE' : 'FRAMEWORK'}${p.port ? `, port ${p.port}` : ''}` },
   ];
   if (p.kind === 'SERVER') {
+    for (const v of a.service.volumes) deployment.push({ level: 'INFO', text: `Volume shipyard-${a.slug}-${v.replace(/^\/+/, '').replace(/[^a-z0-9_.-]+/gi, '-').toLowerCase()} mounted at ${v}` });
     deployment.push({ level: 'INFO', text: `Started container shipyard-${a.slug}-web-${d.number} (${a.service.cpuLimit} CPU, ${a.service.memoryLimitMb} MB)` });
     deployment.push({ level: 'INFO', text: `Health check: HTTP ${a.service.healthCheckPath} on port ${p.port} (timeout ${a.service.healthCheckTimeoutSeconds}s)` });
     deployment.push({ level: 'INFO', text: `HTTP 200 from ${a.service.healthCheckPath}` });
@@ -830,7 +833,7 @@ export function createDemoApi(): Api {
           startCommand: s.startCommand ?? null, outputDirectory: s.outputDirectory ?? null, runtimeImage: s.runtimeImage ?? null,
           internalPort: s.internalPort ?? null, healthCheckType: s.healthCheckType ?? a.service.healthCheckType,
           healthCheckPath: s.healthCheckPath ?? a.service.healthCheckPath, healthCheckTimeoutSeconds: s.healthCheckTimeoutSeconds ?? a.service.healthCheckTimeoutSeconds,
-          cpuLimit: s.cpuLimit ?? a.service.cpuLimit, memoryLimitMb: s.memoryLimitMb ?? a.service.memoryLimitMb, restartPolicy: s.restartPolicy ?? a.service.restartPolicy,
+          cpuLimit: s.cpuLimit ?? a.service.cpuLimit, memoryLimitMb: s.memoryLimitMb ?? a.service.memoryLimitMb, restartPolicy: s.restartPolicy ?? a.service.restartPolicy, volumes: s.volumes ?? a.service.volumes,
         });
       }
       a.updatedAt = iso(now());
@@ -846,6 +849,14 @@ export function createDemoApi(): Api {
       return undefined as void;
     }),
     deploy: (id, ref) => wrap(() => requestDeployment(findApp(id), 'MANUAL', ref)),
+    exec: (id, command, cwd) => wrap(() => {
+      const a = findApp(id);
+      const cur = a.deployments.find((d) => d.id === a.currentId);
+      if (!cur) throw new DemoError(409, 'The application has not been deployed yet');
+      if (a.status === 'STOPPED') throw new DemoError(409, `The container ${cur.containerName} is not running`);
+      record('CONTAINER_COMMAND', 'APPLICATION', id, { container: cur.containerName ?? '', command });
+      return demoExec(command, cwd ?? '/app', cur.containerName ?? '');
+    }, 250),
     restart: (id) => wrap(() => {
       const a = findApp(id);
       if (!a.currentId) throw new DemoError(409, 'Application has no active deployment');
@@ -1043,7 +1054,7 @@ export function createDemoApi(): Api {
     }),
     platform: {
       info: () => wrap(() => ({
-        name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard',
+        name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard', dockerSubnet: '172.30.0.0/22',
         publicUrl: 'https://shipyard.example.com', https: true, platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
         httpPort: DEMO_HTTP_PORT, mdns: { enabled: true, running: true, addresses: ['eth0 192.168.1.20'] }, caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
       })),
@@ -1089,3 +1100,35 @@ export const demoTransport: EventTransport = {
 };
 
 export { DemoError };
+
+/** A tiny pretend shell for the demo console. */
+function demoExec(command: string, cwd: string, container: string) {
+  const files: Record<string, string> = {
+    '/data/setup-token': 'demo-setup-7Q2KX-91F4M-ZT8RP\n',
+    '/app/package.json': '{\n  "name": "demo",\n  "private": true\n}\n',
+  };
+  const dirs: Record<string, string[]> = { '/': ['app', 'data', 'etc', 'tmp', 'usr'], '/app': ['main.js', 'package.json'], '/data': ['clawrouter.db', 'setup-token'] };
+  const abs = (p: string) => (p === '.' || p === '' ? cwd : (p.startsWith('/') ? p : `${cwd === '/' ? '' : cwd}/${p}`).replace(/\/+$/, '') || '/');
+  const [name, ...args] = command.trim().split(/\s+/);
+  let output = '';
+  let exitCode = 0;
+  let nextCwd = cwd;
+  if (name === 'cd') {
+    const target = abs(args[0] ?? '/');
+    if (dirs[target]) nextCwd = target;
+    else { output = `sh: cd: can't cd to ${args[0]}: No such file or directory\n`; exitCode = 2; }
+  } else if (name === 'pwd') output = `${cwd}\n`;
+  else if (name === 'ls') {
+    const target = abs(args.find((x) => !x.startsWith('-')) ?? '.');
+    if (dirs[target]) output = `${dirs[target].join('\n')}\n`;
+    else { output = `ls: ${target}: No such file or directory\n`; exitCode = 1; }
+  } else if (name === 'cat') {
+    const f = files[abs(args[0] ?? '')];
+    if (f) output = f;
+    else { output = `cat: can't open '${args[0] ?? ''}': No such file or directory\n`; exitCode = 1; }
+  } else if (name === 'echo') output = `${args.join(' ')}\n`;
+  else if (name === 'whoami') output = 'bun\n';
+  else if (name === 'hostname') output = `${container}\n`;
+  else { output = `sh: ${name}: not found (the demo console knows cd, pwd, ls, cat, echo, whoami, hostname)\n`; exitCode = 127; }
+  return { exitCode, output, cwd: nextCwd, truncated: false, timedOut: false, durationMs: 40, container };
+}

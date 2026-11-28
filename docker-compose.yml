@@ -1,6 +1,7 @@
 # Shipyard on a single homelab server.
 #
 #   cp config/shipyard.env.example .env   # then edit
+#   bash -c 'source scripts/network.sh && shipyard_ensure_network'   # creates the "shipyard" network
 #   docker compose up -d --build
 #
 # Data lives in ${SHIPYARD_HOST_DATA:-/var/lib/shipyard} on the host. Back it up
@@ -84,8 +85,12 @@ services:
     networks: [shipyard]
 
 networks:
+  # Created by scripts/network.sh with a fixed subnet (SHIPYARD_DOCKER_SUBNET, default
+  # 172.30.0.0/22) so applications can trust Caddy by address range. External: compose never
+  # recreates it, which would fail while application containers are attached.
   shipyard:
     name: shipyard
+    external: true
 
 volumes:
   caddy-data:

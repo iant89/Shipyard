@@ -49,7 +49,7 @@ public class DetectionService {
     public Preview preview(String repository, String branch, String accessToken, String rootDirectory) {
         ServiceConfig explicit = rootDirectory == null || rootDirectory.isBlank() ? null
                 : new ServiceConfig(null, null, "web", null, null, null, rootDirectory, null, null, null, null, null, null, null,
-                null, null, null, 60, 1, 512, null, 0, null, null);
+                null, null, null, 60, 1, 512, null, 0, null, null, null);
         return preview(repository, branch, accessToken, explicit);
     }
 

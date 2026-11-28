@@ -39,7 +39,9 @@ public class ApplicationService {
     public record ServiceSettings(String projectType, String buildStrategy, String rootDirectory, String installCommand,
                                   String buildCommand, String testCommand, String startCommand, String outputDirectory,
                                   String runtimeImage, Integer internalPort, String healthCheckType, String healthCheckPath,
-                                  Integer healthCheckTimeoutSeconds, Double cpuLimit, Integer memoryLimitMb, String restartPolicy) {}
+                                  Integer healthCheckTimeoutSeconds, Double cpuLimit, Integer memoryLimitMb, String restartPolicy,
+                                  /** Container paths to keep across deployments; null leaves them unchanged on update. */
+                                  List<String> volumes) {}
 
     public record EnvInput(String name, String value, boolean secret) {}
 
@@ -113,7 +115,7 @@ public class ApplicationService {
                 s.healthCheckType() == null ? "HTTP" : s.healthCheckType(), s.healthCheckPath() == null ? "/" : s.healthCheckPath(),
                 s.healthCheckTimeoutSeconds() == null ? 60 : s.healthCheckTimeoutSeconds(), s.cpuLimit() == null ? 1.0 : s.cpuLimit(),
                 s.memoryLimitMb() == null ? 512 : s.memoryLimitMb(), s.restartPolicy() == null ? "unless-stopped" : s.restartPolicy(),
-                0, now, now));
+                0, now, now, Volumes.normalize(s.volumes())));
         validateLimits(services.primary(app.id()));
 
         repositories.insert(new GitRepository(Ids.uuid(), app.id(), "GITHUB", url, branch,
@@ -163,7 +165,8 @@ public class ApplicationService {
                     s.healthCheckPath() == null ? c.healthCheckPath() : s.healthCheckPath(),
                     s.healthCheckTimeoutSeconds() == null ? c.healthCheckTimeoutSeconds() : s.healthCheckTimeoutSeconds(),
                     s.cpuLimit() == null ? c.cpuLimit() : s.cpuLimit(), s.memoryLimitMb() == null ? c.memoryLimitMb() : s.memoryLimitMb(),
-                    s.restartPolicy() == null ? c.restartPolicy() : s.restartPolicy(), c.restartCount(), c.createdAt(), c.updatedAt());
+                    s.restartPolicy() == null ? c.restartPolicy() : s.restartPolicy(), c.restartCount(), c.createdAt(), c.updatedAt(),
+                    s.volumes() == null ? c.volumes() : Volumes.normalize(s.volumes()));
             validateLimits(next);
             services.update(next);
         }
@@ -181,6 +184,8 @@ public class ApplicationService {
             if (d.containerName() != null) runtime.remove(d.containerName());
             if (d.imageTag() != null) runtime.removeImage(d.imageTag());
         }
+        // Persistent data goes with the application (the delete dialog says so).
+        for (String v : runtime.listVolumes(Volumes.LABEL_APPLICATION, id)) runtime.removeVolume(v);
         applications.delete(id);
         repoManager.delete(id);
         StorageLayout.deleteRecursively(layout.deploymentsDir(id));
@@ -220,7 +225,7 @@ public class ApplicationService {
     }
 
     private static ServiceSettings emptySettings() {
-        return new ServiceSettings(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return new ServiceSettings(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private static String blankToNull(String s) {

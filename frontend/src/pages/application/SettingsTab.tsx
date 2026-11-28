@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bar, Button, Card, DescriptionList, Form, FormGroup, Input, MessageStrip, NumberInput, PasswordInput, Select, Switch, TextArea } from '@enterprise-ui/react';
 import { api, errorMessage, type ServiceSettings } from '../../services/api';
+import { parseVolumes, volumeError, volumeName } from '../../services/volumes';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import type { ApplicationDetail, DetectionResult } from '../../services/types';
 import { humanize } from '../../services/format';
@@ -32,6 +33,7 @@ interface Values {
   cpuLimit: number | null;
   memoryLimitMb: number | null;
   restartPolicy: string;
+  volumes: string;
 }
 
 const fromDetail = (d: ApplicationDetail): Values => ({
@@ -61,6 +63,7 @@ const fromDetail = (d: ApplicationDetail): Values => ({
   cpuLimit: d.service.cpuLimit,
   memoryLimitMb: d.service.memoryLimitMb,
   restartPolicy: d.service.restartPolicy,
+  volumes: (d.service.volumes ?? []).join('\n'),
 });
 
 const nz = (s: string) => (s.trim() ? s.trim() : null);
@@ -77,8 +80,12 @@ export function SettingsTab({ detail, onSaved }: { detail: ApplicationDetail; on
 
   useEffect(() => setV(fromDetail(detail)), [detail]);
 
+  const volumePaths = parseVolumes(v.volumes);
+  const volumesInvalid = volumeError(volumePaths);
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (volumesInvalid) return;
     const service: ServiceSettings = {
       projectType: nz(v.projectType),
       buildStrategy: nz(v.buildStrategy),
@@ -96,6 +103,7 @@ export function SettingsTab({ detail, onSaved }: { detail: ApplicationDetail; on
       cpuLimit: v.cpuLimit,
       memoryLimitMb: v.memoryLimitMb,
       restartPolicy: v.restartPolicy,
+      volumes: parseVolumes(v.volumes),
     };
     const r = await run('save', () => api.applications.update(detail.summary.id, {
       name: v.name, description: v.description, repository: v.repository, branch: v.branch,
@@ -175,6 +183,16 @@ export function SettingsTab({ detail, onSaved }: { detail: ApplicationDetail; on
               options={[{ value: 'unless-stopped', label: 'Unless stopped' }, { value: 'always', label: 'Always' }, { value: 'on-failure:5', label: 'On failure (5 tries)' }, { value: 'no', label: 'Never' }]} />
             <NumberInput label="CPU limit" unit="cores" min={0.1} max={64} step={0.5} precision={1} value={v.cpuLimit} onChange={(x) => set('cpuLimit', x)} />
             <NumberInput label="Memory limit" unit="MB" min={32} max={262144} step={128} value={v.memoryLimitMb} onChange={(x) => set('memoryLimitMb', x)} />
+          </FormGroup>
+        </Card>
+
+        <Card title="Volumes" subtitle="Data in these container paths is kept across deployments, rollbacks and restarts.">
+          <FormGroup columns={1}>
+            <TextArea label="Container paths" value={v.volumes} onChange={(e) => set('volumes', e.target.value)} rows={3} placeholder="/data"
+              className="sy-mono" error={volumesInvalid ?? undefined}
+              description={volumePaths.length && !volumesInvalid
+                ? `One path per line. Stored in Docker volumes ${volumePaths.map((p) => volumeName(detail.summary.slug, p)).join(', ')}; deleting the application deletes them.`
+                : 'One path per line, e.g. /data. Each path gets a named Docker volume; deleting the application deletes it.'} />
           </FormGroup>
         </Card>
 

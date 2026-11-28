@@ -8,6 +8,7 @@ import { api, errorMessage, type ServiceSettings } from '../services/api';
 import type { DetectionPreview } from '../services/types';
 import { appUrl, humanize, isLocalHostname, localHostnameHelp, shortSha } from '../services/format';
 import { useResource } from '../hooks/useResource';
+import { parseVolumes, volumeError } from '../services/volumes';
 import { appHref } from '../app/platformMode';
 
 interface Draft {
@@ -36,12 +37,13 @@ interface Draft {
   memoryLimitMb: number | null;
   env: string;
   envSecret: boolean;
+  volumes: string;
 }
 
 const initial: Draft = {
   name: '', description: '', repository: '', branch: 'main', privateRepo: false, token: '', rootDirectory: '',
   projectType: '', installCommand: '', buildCommand: '', testCommand: '', outputDirectory: '', startCommand: '', port: null,
-  domain: '', autoDeploy: true, autoUpdate: false, healthCheckType: 'HTTP', healthCheckPath: '', cpuLimit: 1, memoryLimitMb: 512, env: '', envSecret: true,
+  domain: '', autoDeploy: true, autoUpdate: false, healthCheckType: 'HTTP', healthCheckPath: '', cpuLimit: 1, memoryLimitMb: 512, env: '', envSecret: true, volumes: '',
 };
 
 /** Parses KEY=VALUE lines. */
@@ -81,6 +83,8 @@ export function AddApplicationPage() {
     api.detect(d.repository, d.branch, token, d.rootDirectory || undefined)
       .then((p) => {
         setPreview(p);
+        // Suggest the Dockerfile's VOLUME paths so their data survives redeploys.
+        if (p.detection.volumes?.length) setD((cur) => (cur.volumes.trim() ? cur : { ...cur, volumes: p.detection.volumes!.join('\n') }));
         if (!d.name.trim()) set('name', p.repository.split('/').pop() ?? '');
       })
       .catch((e) => {
@@ -108,6 +112,7 @@ export function AddApplicationPage() {
     healthCheckPath: d.healthCheckPath.trim() || det?.healthCheckPath || '/',
     cpuLimit: d.cpuLimit,
     memoryLimitMb: d.memoryLimitMb,
+    volumes: parseVolumes(d.volumes),
   });
 
   const finish = async () => {
@@ -125,8 +130,14 @@ export function AddApplicationPage() {
         environment: parseEnv(d.env).map((e) => ({ ...e, secret: d.envSecret })),
         deployNow: true,
       });
-      toast.show({ title: `${created.summary.name} created`, description: 'The first deployment has been queued.', tone: 'success' });
-      navigate(`/applications/${created.summary.id}${d.autoDeploy ? '/webhook' : ''}`);
+      const first = created.summary.latestDeployment;
+      toast.show({
+        title: `${created.summary.name} created`,
+        description: first && d.autoDeploy ? 'The first deployment is building. Set up the GitHub webhook from the Webhook tab.' : 'The first deployment has been queued.',
+        tone: 'success',
+      });
+      // Land on the first deployment so the build can be watched live.
+      navigate(first ? `/applications/${created.summary.id}/deployments/${first.id}` : `/applications/${created.summary.id}${d.autoDeploy ? '/webhook' : ''}`);
     } catch (e) {
       toast.show({ title: 'Could not create application', description: errorMessage(e), tone: 'error' });
       throw e;
@@ -281,6 +292,14 @@ export function AddApplicationPage() {
                     <NumberInput label="Memory limit" unit="MB" min={64} max={262144} step={128} value={d.memoryLimitMb} onChange={(v) => set('memoryLimitMb', v)} />
                   </FormGroup>
                 )}
+                {effectiveType === 'SERVER' && (
+                  <FormGroup columns={1} title="Volumes">
+                    <TextArea label="Persistent paths" value={d.volumes} onChange={(e) => set('volumes', e.target.value)} rows={2} placeholder="/data" className="sy-mono"
+                      description={det?.volumes?.length
+                        ? `Suggested from the Dockerfile's VOLUME. Data in these container paths is kept across deployments; without them it is lost on every redeploy.`
+                        : 'Optional. One container path per line (e.g. /data) whose data is kept across deployments.'} />
+                  </FormGroup>
+                )}
                 <FormGroup columns={1} title="Environment variables">
                   <TextArea label="Variables" value={d.env} onChange={(e) => set('env', e.target.value)} rows={4} placeholder={'DATABASE_URL=postgres://…\nNODE_ENV=production'}
                     description="One KEY=VALUE per line. You can manage them individually later." className="sy-mono" />
@@ -293,6 +312,8 @@ export function AddApplicationPage() {
               if (d.domain.trim() && !/^[a-z0-9.*-]+\.[a-z0-9-]+$/i.test(d.domain.trim().replace(/^https?:\/\//, ''))) return 'Enter a valid hostname, e.g. app.example.com.';
               const bad = parseEnv(d.env).find((e) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(e.name));
               if (bad) return `Invalid variable name: ${bad.name}`;
+              const volErr = effectiveType === 'SERVER' ? volumeError(parseVolumes(d.volumes)) : null;
+              if (volErr) return volErr;
               return true;
             },
           },
@@ -314,6 +335,7 @@ export function AddApplicationPage() {
                     { term: 'Domain', description: domainUrl ?? 'None yet' },
                     { term: 'Webhook', description: d.autoDeploy ? `Automatic deployment on push to ${d.branch}` : 'Manual deployments only' },
                     { term: 'Automatic updates', description: d.autoUpdate ? `Checks ${d.branch} every 90 seconds` : 'Off' },
+                    ...(effectiveType === 'SERVER' ? [{ term: 'Volumes', description: parseVolumes(d.volumes).join(', ') || 'None (data is not kept across deployments)' }] : []),
                     { term: 'Environment', description: `${parseEnv(d.env).length} variable(s)${parseEnv(d.env).length && d.envSecret ? ', secret' : ''}` },
                     { term: 'Health check', description: effectiveType === 'STATIC' ? 'Artifact check' : `${d.healthCheckType}${d.healthCheckType === 'HTTP' ? ` ${d.healthCheckPath || det?.healthCheckPath || '/'}` : ''}` },
                   ]}

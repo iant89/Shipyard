@@ -1,4 +1,4 @@
-import { Button, Card, DescriptionList, Icon, MessageStrip, Page, StatusIndicator } from '@enterprise-ui/react';
+import { Button, Card, CopyButton, DescriptionList, Icon, MessageStrip, Page, StatusIndicator } from '@enterprise-ui/react';
 import { api } from '../services/api';
 import { useResource } from '../hooks/useResource';
 import { useAsyncAction } from '../hooks/useAsyncAction';
@@ -27,6 +27,9 @@ export function InfrastructurePage() {
               { term: 'Runtime', description: 'Docker' },
               { term: 'Version', description: i?.dockerVersion ?? '–' },
               { term: 'Application network', description: <code className="sy-mono">{i?.dockerNetwork ?? '–'}</code> },
+              { term: 'Network subnet', description: i?.dockerSubnet
+                ? <span className="sy-row"><code className="sy-mono">{i.dockerSubnet}</code><CopyButton value={i.dockerSubnet} size="sm" label="Copy subnet" /></span>
+                : '–' },
               { term: 'Concurrent deployments', description: String(i?.workerThreads ?? '–') },
               { term: 'Retained deployments', description: i ? `${i.retainDeployments} per application` : '–' },
               { term: 'Data directory', description: <code className="sy-mono">{i?.dataDir ?? '–'}</code> },

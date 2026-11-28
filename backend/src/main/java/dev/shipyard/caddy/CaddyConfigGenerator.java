@@ -7,6 +7,14 @@ import java.util.stream.Collectors;
 public final class CaddyConfigGenerator {
     private CaddyConfigGenerator() {}
 
+    /** Response types Caddy compresses (its defaults, minus text/event-stream). */
+    static final String COMPRESSIBLE_TYPES = String.join(" ",
+            "text/html*", "text/css*", "text/plain*", "text/javascript*", "text/xml*", "text/csv*", "text/markdown*",
+            "application/json*", "application/javascript*", "application/x-javascript*", "application/xml*",
+            "application/xhtml+xml*", "application/rss+xml*", "application/atom+xml*", "application/ld+json*",
+            "application/manifest+json*", "application/geo+json*", "application/wasm*",
+            "image/svg+xml*", "image/x-icon*", "image/vnd.microsoft.icon*", "font/*");
+
     public static String generate(String adminDirective, boolean https, String acmeEmail, String platformDomain, String platformUpstream,
                                   List<CaddyRoute> routes) {
         StringBuilder f = new StringBuilder();
@@ -18,7 +26,11 @@ public final class CaddyConfigGenerator {
         // serves the plain-HTTP listeners configured below.
         if (!https) f.append("\tauto_https off\n");
         f.append("}\n\n");
-        f.append("(shipyard_common) {\n\tencode zstd gzip\n\theader -Server\n}\n\n");
+        // Compress the usual text types but never text/event-stream: compressing
+        // Server-Sent Events buffers them, so live build logs and status
+        // updates would arrive late or in bursts.
+        f.append("(shipyard_common) {\n\tencode zstd gzip {\n\t\tmatch {\n\t\t\theader Content-Type ")
+                .append(COMPRESSIBLE_TYPES).append("\n\t\t}\n\t}\n\theader -Server\n}\n\n");
 
         if (platformDomain != null && !platformDomain.isBlank()) {
             f.append(address(platformDomain.strip(), https)).append(" {\n\timport shipyard_common\n\treverse_proxy ")

@@ -13,6 +13,7 @@ import { UpdateBanner } from './application/UpdateBanner';
 import { isActive } from '../components/DeploymentStatus';
 import { OverviewTab } from './application/OverviewTab';
 import { DeploymentsTab } from './application/DeploymentsTab';
+import { ConsoleTab } from './application/ConsoleTab';
 import { LogsTab } from './application/LogsTab';
 import { MetricsTab } from './application/MetricsTab';
 import { EnvironmentTab } from './application/EnvironmentTab';
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'deployments', label: 'Deployments' },
   { id: 'logs', label: 'Logs' },
+  { id: 'console', label: 'Console' },
   { id: 'metrics', label: 'Metrics' },
   { id: 'environment', label: 'Environment' },
   { id: 'domains', label: 'Domains' },
@@ -78,7 +80,7 @@ export function ApplicationPage() {
           {stopped ? (
             <Button icon={<Icon name="media-play" />} loading={busy === 'start'} onClick={() => doAction('start', () => api.applications.start(id), `${a.name} started`)}>Start</Button>
           ) : (
-            <Button icon={<Icon name="stop" />} disabled={!current} onClick={() => setConfirm('stop')}>Stop</Button>
+            <Button variant="destructive" icon={<Icon name="stop" />} disabled={!current} onClick={() => setConfirm('stop')}>Stop</Button>
           )}
           <OverflowMenu
             label="More actions"
@@ -133,6 +135,7 @@ export function ApplicationPage() {
         <TabPanel value="overview">{activeTab === 'overview' && <OverviewTab detail={detail} />}</TabPanel>
         <TabPanel value="deployments">{activeTab === 'deployments' && <DeploymentsTab detail={detail} />}</TabPanel>
         <TabPanel value="logs">{activeTab === 'logs' && <LogsTab detail={detail} />}</TabPanel>
+        <TabPanel value="console">{activeTab === 'console' && <ConsoleTab detail={detail} />}</TabPanel>
         <TabPanel value="metrics">{activeTab === 'metrics' && <MetricsTab detail={detail} />}</TabPanel>
         <TabPanel value="environment">{activeTab === 'environment' && <EnvironmentTab applicationId={id} />}</TabPanel>
         <TabPanel value="domains">{activeTab === 'domains' && <DomainsTab detail={detail} onChange={app.reload} />}</TabPanel>
@@ -142,10 +145,10 @@ export function ApplicationPage() {
 
       <DeployDialog open={deployOpen} onClose={() => setDeployOpen(false)} applicationId={id} branch={a.repository?.branch ?? 'main'}
         onDeployed={(d) => navigate(`/applications/${id}/deployments/${d.id}`)} />
-      <AlertDialog open={confirm === 'stop'} tone="warning" title={`Stop ${a.name}?`} confirmLabel="Stop"
+      <AlertDialog open={confirm === 'stop'} tone="error" title={`Stop ${a.name}?`} confirmLabel="Stop"
         onCancel={() => setConfirm(null)}
         onConfirm={async () => { setConfirm(null); await doAction('stop', () => api.applications.stop(id), `${a.name} stopped`); }}>
-        The application stops serving traffic until it is started again. Its deployment is kept.
+        Are you sure you want to stop this application? It stops serving traffic until it is started again. Its deployment is kept.
       </AlertDialog>
       <AlertDialog open={confirm === 'rollback'} tone="warning" title="Roll back?" confirmLabel="Roll back"
         onCancel={() => setConfirm(null)}
@@ -159,7 +162,7 @@ export function ApplicationPage() {
           const ok = await run('delete', () => api.applications.remove(id), `${a.name} deleted`);
           if (ok !== undefined || true) navigate('/applications');
         }}>
-        This stops the application, removes its containers, images, deployment history, domains and webhook. This cannot be undone.
+        This stops the application, removes its containers, images, deployment history, domains and webhook{detail.service.volumes?.length ? <>, and <strong>deletes its volumes ({detail.service.volumes.join(', ')}) with all their data</strong></> : ''}. This cannot be undone.
       </AlertDialog>
     </Page>
   );

@@ -58,6 +58,7 @@ shipyard:
   source-dir: ${SHIPYARD_SOURCE_DIR:/opt/shipyard/source}
   http-port: ${SHIPYARD_HTTP_PORT:}
   mdns: ${SHIPYARD_MDNS:true}
+  docker-subnet: ${SHIPYARD_DOCKER_SUBNET:}
 
 logging:
   level:

@@ -17,7 +17,7 @@ public class ServiceRepository {
             rs.getString("runtime_image"), (Integer) rs.getObject("internal_port"), rs.getString("health_check_type"),
             rs.getString("health_check_path"), rs.getInt("health_check_timeout_seconds"), rs.getDouble("cpu_limit"),
             rs.getInt("memory_limit_mb"), rs.getString("restart_policy"), rs.getInt("restart_count"),
-            rs.getString("created_at"), rs.getString("updated_at"));
+            rs.getString("created_at"), rs.getString("updated_at"), Volumes.parse(rs.getString("volumes")));
 
     private final JdbcTemplate jdbc;
 
@@ -45,11 +45,11 @@ public class ServiceRepository {
                 INSERT INTO application_services(id, application_id, name, project_type, framework, build_strategy, root_directory,
                   install_command, build_command, test_command, start_command, output_directory, package_manager, runtime_image,
                   internal_port, health_check_type, health_check_path, health_check_timeout_seconds, cpu_limit, memory_limit_mb,
-                  restart_policy, restart_count, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  restart_policy, restart_count, created_at, updated_at, volumes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 s.id(), s.applicationId(), s.name(), s.projectType(), s.framework(), s.buildStrategy(), s.rootDirectory(),
                 s.installCommand(), s.buildCommand(), s.testCommand(), s.startCommand(), s.outputDirectory(), s.packageManager(),
                 s.runtimeImage(), s.internalPort(), s.healthCheckType(), s.healthCheckPath(), s.healthCheckTimeoutSeconds(),
-                s.cpuLimit(), s.memoryLimitMb(), s.restartPolicy(), s.restartCount(), s.createdAt(), s.updatedAt());
+                s.cpuLimit(), s.memoryLimitMb(), s.restartPolicy(), s.restartCount(), s.createdAt(), s.updatedAt(), Volumes.serialize(s.volumes()));
     }
 
     public void update(ServiceConfig s) {
@@ -57,12 +57,12 @@ public class ServiceRepository {
                 UPDATE application_services SET project_type = ?, framework = ?, build_strategy = ?, root_directory = ?,
                   install_command = ?, build_command = ?, test_command = ?, start_command = ?, output_directory = ?,
                   package_manager = ?, runtime_image = ?, internal_port = ?, health_check_type = ?, health_check_path = ?,
-                  health_check_timeout_seconds = ?, cpu_limit = ?, memory_limit_mb = ?, restart_policy = ?, updated_at = ?
+                  health_check_timeout_seconds = ?, cpu_limit = ?, memory_limit_mb = ?, restart_policy = ?, volumes = ?, updated_at = ?
                 WHERE id = ?""",
                 s.projectType(), s.framework(), s.buildStrategy(), s.rootDirectory(), s.installCommand(), s.buildCommand(),
                 s.testCommand(), s.startCommand(), s.outputDirectory(), s.packageManager(), s.runtimeImage(), s.internalPort(),
                 s.healthCheckType(), s.healthCheckPath(), s.healthCheckTimeoutSeconds(), s.cpuLimit(), s.memoryLimitMb(),
-                s.restartPolicy(), Time.now(), s.id());
+                s.restartPolicy(), Volumes.serialize(s.volumes()), Time.now(), s.id());
     }
 
     public void setRestartCount(String id, int count) {

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProjectDetector {
     private static final Pattern EXPOSE = Pattern.compile("(?im)^\\s*EXPOSE\\s+(\\d+)");
+    private static final Pattern VOLUME = Pattern.compile("(?im)^\\s*VOLUME\\s+(.+)$");
     private final ObjectMapper mapper = new ObjectMapper();
 
     public DetectionResult detect(Path sourceRoot, ServiceConfig explicit) {
@@ -289,6 +291,24 @@ public class ProjectDetector {
                 .installCommand(null).buildCommand("docker build").runtime("Dockerfile").outputDirectory(null);
         Matcher m = EXPOSE.matcher(dockerfile);
         if (m.find()) b.port(Integer.parseInt(m.group(1)));
+        List<String> declared = dockerfileVolumes(dockerfile);
+        b.volumes(declared);
+        if (!declared.isEmpty()) {
+            b.note("The Dockerfile declares VOLUME " + String.join(", ", declared)
+                    + ". Add " + (declared.size() == 1 ? "it" : "them") + " under Volumes to keep the data across deployments.");
+        }
+    }
+
+    /** Paths from VOLUME instructions (shell or JSON form). */
+    static List<String> dockerfileVolumes(String dockerfile) {
+        List<String> out = new java.util.ArrayList<>();
+        Matcher m = VOLUME.matcher(dockerfile);
+        while (m.find()) {
+            for (String part : m.group(1).replaceAll("[\\[\\]\",]", " ").strip().split("\\s+")) {
+                if (part.startsWith("/") && !out.contains(part)) out.add(part);
+            }
+        }
+        return out;
     }
 
     private static void applyExplicit(ServiceConfig s, DetectionResult.Builder b) {

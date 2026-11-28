@@ -19,6 +19,17 @@ public interface ContainerRuntime {
 
     void ensureNetwork(String network);
 
+    /** The network's subnet (e.g. 172.30.0.0/22), or null when unknown. */
+    String networkSubnet(String network);
+
+    /** Creates a named volume (labelled) unless it exists. */
+    void ensureVolume(String name, Map<String, String> labels);
+
+    /** Names of the volumes carrying {@code label=value}. */
+    List<String> listVolumes(String label, String value);
+
+    void removeVolume(String name);
+
     /** Builds an image (or exports a build stage when {@link BuildRequest#exportDir()} is set). */
     void build(BuildRequest request, Consumer<String> log, CancellationToken cancel);
 
@@ -47,6 +58,9 @@ public interface ContainerRuntime {
 
     /** Runs a command inside a running container. */
     ExecResult exec(String name, List<String> command);
+
+    /** Runs a command in a running container with a time limit; exit code -1 and a message when it times out. */
+    ExecResult exec(String name, List<String> command, java.time.Duration timeout);
 
     void removeImage(String tag);
 
