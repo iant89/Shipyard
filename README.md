@@ -126,6 +126,33 @@ process stability) does Shipyard regenerate the Caddy configuration and retire t
 previous container. Its image and static artifacts are kept
 (`SHIPYARD_RETAIN_DEPLOYMENTS`) for instant rollback.
 
+### Persistent volumes
+
+Containers are replaced on every deployment, so anything an application writes
+inside its container is lost unless the path is a **volume** (Settings → Volumes,
+or the Deployment step of Add Application, which suggests the Dockerfile's
+`VOLUME` paths). Each container path, e.g. `/data`, is backed by a named Docker
+volume, `shipyard-<slug>-data`, that every deployment, rollback and restart mounts.
+A new Docker volume starts with the image's files and ownership at that path, so
+images that run as an unprivileged user (like `oven/bun`) can write to it.
+Deleting the application deletes its volumes. Back them up with e.g.
+`docker run --rm -v shipyard-myapp-data:/v -v "$PWD":/b alpine tar czf /b/myapp-data.tgz -C /v .`
+
+During a deployment the new container starts while the current one still runs,
+so both mount the volume for a few seconds. SQLite and most databases handle that;
+software that takes an exclusive lock on its data directory may fail the health
+check until the previous container stops.
+
+### Application network
+
+Caddy and every application share the `shipyard` Docker network. Its subnet is fixed
+(`SHIPYARD_DOCKER_SUBNET`, default `172.30.0.0/22`) so applications can trust Caddy as
+their reverse proxy by range, for example `CLAWROUTER_TRUSTED_PROXIES=172.30.0.0/22`.
+Infrastructure shows the subnet in use. The network is created by `scripts/network.sh`
+(the installer and updater call it) and is `external` in `docker-compose.yml`. Installs
+created before the subnet was pinned keep their Docker-chosen range until you run
+`sudo scripts/pin-network-subnet.sh` from the checkout (about a minute of downtime).
+
 ## Configuration
 
 All settings are environment variables (see [`config/shipyard.env.example`](config/shipyard.env.example)):
@@ -140,6 +167,7 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 | `SHIPYARD_DATA_DIR` | `/var/lib/shipyard` | Database, repositories, artifacts, Caddyfile |
 | `SHIPYARD_CADDY_ADMIN_URL` | – | `unix:/path/admin.sock` or `http://caddy:2019` |
 | `SHIPYARD_DOCKER_NETWORK` | `shipyard` | Network shared by Caddy and applications |
+| `SHIPYARD_DOCKER_SUBNET` | `172.30.0.0/22` | Subnet of that network when it is created (see *Application network*) |
 | `SHIPYARD_WORKER_THREADS` | `2` | Concurrent deployments across applications |
 | `SHIPYARD_RETAIN_DEPLOYMENTS` | `10` | Artifacts kept per application |
 | `SHIPYARD_CRASH_RESTART_THRESHOLD` | `5` | Restarts before an app is marked CRASHED |
@@ -154,6 +182,7 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 Back up the data directory. The essential files are
 `database/shipyard.db` (SQLite) and `database/secret.key` (encrypts environment
 variables, webhook secrets and access tokens — without it they cannot be read).
+Application volumes are Docker volumes named `shipyard-<slug>-…` (see *Persistent volumes*).
 
 ### Updating Shipyard
 

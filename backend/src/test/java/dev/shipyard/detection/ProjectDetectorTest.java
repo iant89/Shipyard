@@ -21,6 +21,13 @@ class ProjectDetectorTest {
     }
 
     @Test
+    void readsDockerfileVolumes() {
+        assertThat(ProjectDetector.dockerfileVolumes("FROM x\nVOLUME /data\nvolume [\"/cache\", \"/data\"]\nVOLUME /a /b\n"))
+                .containsExactly("/data", "/cache", "/a", "/b");
+        assertThat(ProjectDetector.dockerfileVolumes("FROM x\nEXPOSE 8080\n")).isEmpty();
+    }
+
+    @Test
     void reactViteIsStatic() throws IOException {
         write("package.json", """
                 {"scripts":{"build":"vite build"},"dependencies":{"react":"^18"},"devDependencies":{"vite":"^5"}}""");

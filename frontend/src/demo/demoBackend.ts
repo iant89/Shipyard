@@ -173,7 +173,9 @@ function detection(p: Profile, s?: ServiceConfig): DetectionResult {
     healthCheckPath: s?.healthCheckPath ?? p.health,
     healthCheckType: 'HTTP',
     source: explicit ? 'EXPLICIT' : p.strategy === 'DOCKERFILE' ? 'DOCKERFILE' : 'FRAMEWORK',
-    notes: p.strategy === 'PYTHON' ? ['Verify the Python start command; it was inferred from the project layout.'] : [],
+    notes: p.strategy === 'PYTHON' ? ['Verify the Python start command; it was inferred from the project layout.']
+      : p.strategy === 'DOCKERFILE' ? ['The Dockerfile declares VOLUME /data. Add it under Volumes to keep the data across deployments.'] : [],
+    volumes: p.strategy === 'DOCKERFILE' ? ['/data'] : [],
   };
 }
 
@@ -186,7 +188,7 @@ function serviceFor(appId: string, p: Profile, s?: ServiceSettings): ServiceConf
     packageManager: p.packageManager, runtimeImage: s?.runtimeImage ?? null, internalPort: s?.internalPort ?? null,
     healthCheckType: s?.healthCheckType ?? 'HTTP', healthCheckPath: s?.healthCheckPath ?? p.health,
     healthCheckTimeoutSeconds: s?.healthCheckTimeoutSeconds ?? 60, cpuLimit: s?.cpuLimit ?? (p.kind === 'SERVER' ? 1 : 1),
-    memoryLimitMb: s?.memoryLimitMb ?? (p.strategy === 'MAVEN' ? 1024 : 512), restartPolicy: s?.restartPolicy ?? 'unless-stopped',
+    memoryLimitMb: s?.memoryLimitMb ?? (p.strategy === 'MAVEN' ? 1024 : 512), restartPolicy: s?.restartPolicy ?? 'unless-stopped', volumes: s?.volumes ?? [],
     restartCount: 0, ...{ applicationId: appId, createdAt: t, updatedAt: t },
   } as ServiceConfig;
 }
@@ -461,6 +463,7 @@ function buildScript(a: AppState, d: Deployment) {
     { level: 'INFO', text: `Detected ${p.kind} application: ${p.framework} via ${p.strategy === 'DOCKERFILE' ? 'DOCKERFILE' : 'FRAMEWORK'}${p.port ? `, port ${p.port}` : ''}` },
   ];
   if (p.kind === 'SERVER') {
+    for (const v of a.service.volumes) deployment.push({ level: 'INFO', text: `Volume shipyard-${a.slug}-${v.replace(/^\/+/, '').replace(/[^a-z0-9_.-]+/gi, '-').toLowerCase()} mounted at ${v}` });
     deployment.push({ level: 'INFO', text: `Started container shipyard-${a.slug}-web-${d.number} (${a.service.cpuLimit} CPU, ${a.service.memoryLimitMb} MB)` });
     deployment.push({ level: 'INFO', text: `Health check: HTTP ${a.service.healthCheckPath} on port ${p.port} (timeout ${a.service.healthCheckTimeoutSeconds}s)` });
     deployment.push({ level: 'INFO', text: `HTTP 200 from ${a.service.healthCheckPath}` });
@@ -830,7 +833,7 @@ export function createDemoApi(): Api {
           startCommand: s.startCommand ?? null, outputDirectory: s.outputDirectory ?? null, runtimeImage: s.runtimeImage ?? null,
           internalPort: s.internalPort ?? null, healthCheckType: s.healthCheckType ?? a.service.healthCheckType,
           healthCheckPath: s.healthCheckPath ?? a.service.healthCheckPath, healthCheckTimeoutSeconds: s.healthCheckTimeoutSeconds ?? a.service.healthCheckTimeoutSeconds,
-          cpuLimit: s.cpuLimit ?? a.service.cpuLimit, memoryLimitMb: s.memoryLimitMb ?? a.service.memoryLimitMb, restartPolicy: s.restartPolicy ?? a.service.restartPolicy,
+          cpuLimit: s.cpuLimit ?? a.service.cpuLimit, memoryLimitMb: s.memoryLimitMb ?? a.service.memoryLimitMb, restartPolicy: s.restartPolicy ?? a.service.restartPolicy, volumes: s.volumes ?? a.service.volumes,
         });
       }
       a.updatedAt = iso(now());
@@ -1043,7 +1046,7 @@ export function createDemoApi(): Api {
     }),
     platform: {
       info: () => wrap(() => ({
-        name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard',
+        name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard', dockerSubnet: '172.30.0.0/22',
         publicUrl: 'https://shipyard.example.com', https: true, platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
         httpPort: DEMO_HTTP_PORT, mdns: { enabled: true, running: true, addresses: ['eth0 192.168.1.20'] }, caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
       })),

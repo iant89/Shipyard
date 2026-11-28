@@ -91,6 +91,8 @@ export interface ServiceConfig {
   cpuLimit: number;
   memoryLimitMb: number;
   restartPolicy: string;
+  /** Container paths kept across deployments (named Docker volumes). */
+  volumes: string[];
   restartCount: number;
 }
 
@@ -129,6 +131,8 @@ export interface DetectionResult {
   healthCheckType: string | null;
   source: string | null;
   notes: string[];
+  /** Paths the Dockerfile declares with VOLUME. */
+  volumes?: string[];
 }
 
 export interface DetectionPreview {
@@ -249,6 +253,8 @@ export interface PlatformInfo {
   dockerAvailable: boolean;
   dockerVersion: string | null;
   dockerNetwork: string;
+  /** Subnet of the application network; applications can trust it as their proxy range. */
+  dockerSubnet: string | null;
   publicUrl: string;
   https: boolean;
   /** Host port Caddy's HTTP listener is published on; local hostnames' URLs include it when not 80. */

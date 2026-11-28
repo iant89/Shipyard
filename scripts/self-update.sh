@@ -128,6 +128,8 @@ printf '%s\n' "$FROM" > "$BACKUP/commit"
 
 status RUNNING "Starting Shipyard ${TO:0:7}"
 log "Starting Shipyard ${TO:0:7}"
+# The network is external since it was pinned; make sure it exists (never changes an existing one).
+if [[ -f scripts/network.sh ]]; then (source scripts/network.sh && shipyard_ensure_network) >>"$LOG" 2>&1 || true; fi
 SHIPYARD_COMMIT="$TO" docker compose up -d >>"$LOG" 2>&1 || log "docker compose up reported an error"
 if wait_healthy; then
   finish SUCCEEDED "Updated to ${TO:0:7}."

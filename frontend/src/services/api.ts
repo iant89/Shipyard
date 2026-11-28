@@ -75,6 +75,8 @@ export interface ServiceSettings {
   cpuLimit?: number | null;
   memoryLimitMb?: number | null;
   restartPolicy?: string | null;
+  /** Container paths kept across deployments; omit to leave unchanged. */
+  volumes?: string[] | null;
 }
 
 export interface CreateApplicationRequest {

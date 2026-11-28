@@ -97,6 +97,8 @@ public class PlatformController {
         m.put("dockerAvailable", dockerVersion != null);
         m.put("dockerVersion", dockerVersion);
         m.put("dockerNetwork", props.dockerNetwork());
+        // Applications behind Caddy can trust this range as their proxy (e.g. X-Forwarded-For).
+        m.put("dockerSubnet", dockerVersion == null ? null : runtime.networkSubnet(props.dockerNetwork()));
         m.put("publicUrl", props.publicUrlNoSlash());
         m.put("platformDomain", props.platformDomain());
         m.put("https", props.https());

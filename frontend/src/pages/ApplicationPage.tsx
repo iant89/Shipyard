@@ -159,7 +159,7 @@ export function ApplicationPage() {
           const ok = await run('delete', () => api.applications.remove(id), `${a.name} deleted`);
           if (ok !== undefined || true) navigate('/applications');
         }}>
-        This stops the application, removes its containers, images, deployment history, domains and webhook. This cannot be undone.
+        This stops the application, removes its containers, images, deployment history, domains and webhook{detail.service.volumes?.length ? <>, and <strong>deletes its volumes ({detail.service.volumes.join(', ')}) with all their data</strong></> : ''}. This cannot be undone.
       </AlertDialog>
     </Page>
   );

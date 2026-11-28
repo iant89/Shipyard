@@ -5,6 +5,7 @@ import dev.shipyard.applications.ApplicationRepository;
 import dev.shipyard.applications.ApplicationStatus;
 import dev.shipyard.applications.ServiceConfig;
 import dev.shipyard.applications.ServiceRepository;
+import dev.shipyard.applications.Volumes;
 import dev.shipyard.audit.AuditActions;
 import dev.shipyard.audit.AuditService;
 import dev.shipyard.builds.BuildArtifact;
@@ -29,6 +30,7 @@ import dev.shipyard.storage.StorageLayout;
 import dev.shipyard.webhooks.WebhookEventStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -260,8 +262,15 @@ public class DeploymentPipeline {
         runtime.remove(name); // leftovers from an interrupted attempt
         Map<String, String> env = new LinkedHashMap<>(environment.runtimeEnvironment(app.id()));
         if (port != null) env.putIfAbsent("PORT", String.valueOf(port));
+        List<String> mounts = new ArrayList<>();
+        for (String path : service.volumes()) {
+            String volume = Volumes.volumeName(app.slug(), path);
+            runtime.ensureVolume(volume, Map.of(Volumes.LABEL_APPLICATION, app.id(), "dev.shipyard.managed", "true", "dev.shipyard.path", path));
+            mounts.add(volume + ":" + path);
+            out.info("Volume " + volume + " mounted at " + path);
+        }
         runtime.create(new ContainerSpec(name, image, env, null, port, service.cpuLimit(), service.memoryLimitMb(),
-                service.restartPolicy(), props.dockerNetwork(), List.of(), List.of(), labels));
+                service.restartPolicy(), props.dockerNetwork(), List.of(), mounts, labels));
         deployments.setContainer(d.id(), name);
         runtime.start(name);
         out.info("Started container " + name + " (" + service.cpuLimit() + " CPU, " + service.memoryLimitMb() + " MB)");

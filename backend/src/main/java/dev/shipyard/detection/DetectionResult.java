@@ -23,7 +23,9 @@ public record DetectionResult(
         String healthCheckPath,
         String healthCheckType,
         String source,
-        List<String> notes) {
+        List<String> notes,
+        /** Paths the Dockerfile declares with VOLUME (suggested persistent volumes). */
+        List<String> volumes) {
 
     public Builder toBuilder() {
         return new Builder(this);
@@ -49,6 +51,7 @@ public record DetectionResult(
         String healthCheckType;
         String source;
         java.util.ArrayList<String> notes = new java.util.ArrayList<>();
+        List<String> volumes = List.of();
 
         Builder(DetectionResult r) {
             if (r == null) return;
@@ -56,7 +59,7 @@ public record DetectionResult(
             packageManager = r.packageManager; installCommand = r.installCommand; buildCommand = r.buildCommand;
             testCommand = r.testCommand; startCommand = r.startCommand; outputDirectory = r.outputDirectory;
             runtime = r.runtime; port = r.port; healthCheckPath = r.healthCheckPath; healthCheckType = r.healthCheckType;
-            source = r.source; notes.addAll(r.notes);
+            source = r.source; notes.addAll(r.notes); volumes = r.volumes == null ? List.of() : r.volumes;
         }
 
         public Builder projectType(ProjectType v) { projectType = v; return this; }
@@ -74,10 +77,11 @@ public record DetectionResult(
         public Builder healthCheckType(String v) { healthCheckType = v; return this; }
         public Builder source(String v) { source = v; return this; }
         public Builder note(String v) { notes.add(v); return this; }
+        public Builder volumes(List<String> v) { volumes = v == null ? List.of() : List.copyOf(v); return this; }
 
         public DetectionResult build() {
             return new DetectionResult(projectType, buildStrategy, framework, packageManager, installCommand, buildCommand,
-                    testCommand, startCommand, outputDirectory, runtime, port, healthCheckPath, healthCheckType, source, List.copyOf(notes));
+                    testCommand, startCommand, outputDirectory, runtime, port, healthCheckPath, healthCheckType, source, List.copyOf(notes), volumes);
         }
     }
 }
