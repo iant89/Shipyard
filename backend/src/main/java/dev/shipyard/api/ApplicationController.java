@@ -8,6 +8,7 @@ import dev.shipyard.applications.ApplicationService;
 import dev.shipyard.applications.ServiceRepository;
 import dev.shipyard.audit.AuditService;
 import dev.shipyard.common.NotFoundException;
+import dev.shipyard.config.PlatformProperties;
 import dev.shipyard.deployments.Deployment;
 import dev.shipyard.deployments.DeploymentRepository;
 import dev.shipyard.deployments.DeploymentService;
@@ -71,12 +72,13 @@ public class ApplicationController {
     private final DetectionService detection;
     private final EventBus events;
     private final AuditService audit;
+    private final PlatformProperties props;
 
     public ApplicationController(ApplicationRepository applications, ApplicationService service, ApplicationViews views,
                                  DeploymentService deploymentService, DeploymentRepository deployments, ServiceRepository services,
                                  GitRepositoryStore repositories, DomainService domains, EnvironmentService environment,
                                  WebhookService webhooks, LogService logs, MetricsService metrics, ContainerRuntime runtime,
-                                 DetectionService detection, EventBus events, AuditService audit) {
+                                 DetectionService detection, EventBus events, AuditService audit, PlatformProperties props) {
         this.applications = applications;
         this.service = service;
         this.views = views;
@@ -93,6 +95,7 @@ public class ApplicationController {
         this.detection = detection;
         this.events = events;
         this.audit = audit;
+        this.props = props;
     }
 
     // ------------------------------------------------------------------ CRUD
