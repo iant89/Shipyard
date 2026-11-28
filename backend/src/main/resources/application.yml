@@ -46,6 +46,7 @@ shipyard:
   docker-binary: ${SHIPYARD_DOCKER_BINARY:docker}
   git-binary: ${SHIPYARD_GIT_BINARY:git}
   caddy-admin-url: ${SHIPYARD_CADDY_ADMIN_URL:}
+  https: ${SHIPYARD_HTTPS:false}
   acme-email: ${SHIPYARD_ACME_EMAIL:}
   platform-upstream: ${SHIPYARD_PLATFORM_UPSTREAM:shipyard:8080}
   worker-threads: ${SHIPYARD_WORKER_THREADS:2}

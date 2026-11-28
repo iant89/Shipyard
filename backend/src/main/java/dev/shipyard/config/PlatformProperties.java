@@ -24,6 +24,8 @@ public record PlatformProperties(
         String gitBinary,
         /** Caddy admin API, e.g. http://caddy:2019. Empty disables live reload. */
         String caddyAdminUrl,
+        /** When false, Caddy serves plain HTTP only: no ACME, no certificates, no 443. */
+        boolean https,
         /** Email used by Caddy for ACME registration (optional). */
         String acmeEmail,
         /** Upstream Caddy should use to reach the platform UI. */
@@ -47,6 +49,8 @@ public record PlatformProperties(
         if (dockerBinary == null || dockerBinary.isBlank()) dockerBinary = "docker";
         if (gitBinary == null || gitBinary.isBlank()) gitBinary = "git";
         if (caddyAdminUrl == null) caddyAdminUrl = "";
+        if (platformDomain != null && platformDomain.strip().equalsIgnoreCase("shipyard.example.com")) platformDomain = "";
+        if (!https) acmeEmail = "";
         if (platformUpstream == null || platformUpstream.isBlank()) platformUpstream = "shipyard:8080";
         if (workerThreads <= 0) workerThreads = 2;
         if (retainDeployments <= 0) retainDeployments = 10;

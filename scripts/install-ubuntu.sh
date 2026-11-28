@@ -11,11 +11,13 @@
 #
 # Options:
 #   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
-#   --host-port PORT   Host port for Caddy (80/443) if different (default: 80/443)
+#   --host-port PORT   Host port for Caddy HTTP (default: 80)
 #   --http-port PORT   Host port for UI (SHIPYARD_UI_PORT) if different (default: 8080)
 #   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
 #   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
 #   --no-start         Install everything but do not build/start the stack
+#   --no-https         Serve plain HTTP only (default; no certificates, no 443 listener)
+#   --https            Enable automatic HTTPS via Caddy on port 443
 #   --yes, -y          Non-interactive; accept all defaults
 #   --help, -h         Show this help
 
@@ -30,6 +32,7 @@ PUBLIC_URL=""
 REPO_DIR=""
 DEV=0
 START=1
+HTTPS=0
 ASSUME_YES=0
 
 log()  { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
@@ -45,16 +48,18 @@ plugin, git), clones Shipyard, writes .env and starts the stack.
 
 Usage:
   curl -fsSL https://raw.githubusercontent.com/iant89/Shipyard/main/scripts/install-ubuntu.sh | sudo bash
-  curl -fsSL .../install-ubuntu.sh | sudo bash -s -- --public-url https://shipyard.example.com
+  curl -fsSL .../install-ubuntu.sh | sudo bash -s -- --http-port 8083
   sudo scripts/install-ubuntu.sh --dev          # also install the dev toolchain
 
 Options:
   --public-url URL   Base URL of the platform (default: http://<lan-ip>:8080)
-  --host-port PORT   Host port for Caddy (80/443) if different (default: 80/443)
+  --host-port PORT   Host port for Caddy HTTP (default: 80)
   --http-port PORT   Host port for UI (SHIPYARD_UI_PORT) if different (default: 8080)
   --repo-dir DIR     Where to clone Shipyard (default: /opt/shipyard)
   --dev              Also install dev dependencies: OpenJDK 21, Maven, Node 22
   --no-start         Install everything but do not build/start the stack
+  --no-https         Serve plain HTTP only (default; no certificates, no 443 listener)
+  --https            Enable automatic HTTPS via Caddy on port 443
   --yes, -y          Non-interactive; accept all defaults
   --help, -h         Show this help
 EOF
@@ -71,6 +76,8 @@ while [[ $# -gt 0 ]]; do
     --repo-dir) REPO_DIR="${2:?--repo-dir needs a value}"; shift 2 ;;
     --repo-dir=*) REPO_DIR="${1#*=}"; shift ;;
     --dev) DEV=1; shift ;;
+    --no-https) HTTPS=0; shift ;;
+    --https) HTTPS=1; shift ;;
     --no-start) START=0; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     --help|-h) usage; exit 0 ;;
@@ -193,10 +200,18 @@ done
 
 if [[ -n "$SHIPYARD_ROOT" ]]; then
   log "Using existing checkout: $SHIPYARD_ROOT"
+  if [[ -d "$SHIPYARD_ROOT/.git" ]]; then
+    git -C "$SHIPYARD_ROOT" checkout -- docker-compose.yml 2>/dev/null || true
+    # When piped via curl | sudo bash, pull latest updates even if cwd is already the repo.
+    if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
+      git -C "$SHIPYARD_ROOT" pull --ff-only --quiet || warn "could not fast-forward $SHIPYARD_ROOT; continuing with existing checkout"
+    fi
+  fi
 else
   REPO_DIR="${REPO_DIR:-$DEFAULT_REPO_DIR}"
   if [[ -d "$REPO_DIR/.git" ]]; then
     log "Updating $REPO_DIR"
+    git -C "$REPO_DIR" checkout -- docker-compose.yml 2>/dev/null || true
     git -C "$REPO_DIR" pull --ff-only --quiet
   elif [[ -e "$REPO_DIR" ]] && [[ -n "$(ls -A "$REPO_DIR" 2>/dev/null)" ]]; then
     die "$REPO_DIR exists and is not a Shipyard checkout; remove it or pass --repo-dir"
@@ -215,6 +230,11 @@ if [[ ! -f .env ]]; then
   log "Created .env from config/shipyard.env.example"
 fi
 
+# Clear the old example placeholder domain if left over from an earlier .env.
+if [[ "$(get_env SHIPYARD_PLATFORM_DOMAIN)" == "shipyard.example.com" ]]; then
+  set_env SHIPYARD_PLATFORM_DOMAIN ""
+fi
+
 # Override SHIPYARD_UI_PORT if --http-port is specified
 if [[ -n "$HTTP_PORT" ]]; then
   set_env SHIPYARD_UI_PORT "$HTTP_PORT"
@@ -224,12 +244,37 @@ fi
 ui_port_default="$(get_env SHIPYARD_UI_PORT)"
 ui_port_default="${ui_port_default:-8080}"
 
+# Avoid binding Caddy and the Shipyard UI to the same host TCP port.
+if [[ -n "$HOST_PORT" && "$HOST_PORT" == "${HTTP_PORT:-${ui_port_default}}" ]]; then
+  if [[ -n "$HTTP_PORT" ]]; then
+    warn "--host-port and --http-port cannot both use port $HOST_PORT; keeping Shipyard UI on $HTTP_PORT and Caddy on 80"
+    HOST_PORT=""
+  else
+    ui_port_default=$((HOST_PORT + 1))
+    set_env SHIPYARD_UI_PORT "$ui_port_default"
+    warn "--host-port $HOST_PORT matches SHIPYARD_UI_PORT; moved SHIPYARD_UI_PORT to $ui_port_default"
+  fi
+fi
+
+# HTTPS: plain HTTP by default; pass --https to enable automatic TLS on 443.
+if [[ $HTTPS -eq 0 ]]; then
+  set_env SHIPYARD_HTTPS false
+  log "HTTPS disabled: serving plain HTTP only (no certificates, no port 443)"
+else
+  set_env SHIPYARD_HTTPS true
+  log "HTTPS enabled: Caddy will manage TLS certificates on port 443"
+fi
+
 if [[ -z "$PUBLIC_URL" ]]; then
-  prompt PUBLIC_URL "Public URL of the platform (used for webhook URLs)" "http://$(lan_ip):${ui_port_default}"
+  prompt PUBLIC_URL "Public URL of the platform (used for webhook URLs)" "http://$(lan_ip):${HTTP_PORT:-${ui_port_default}}"
+fi
+if [[ $HTTPS -eq 0 && "$PUBLIC_URL" == https://* ]]; then
+  PUBLIC_URL="http://${PUBLIC_URL#https://}"
+  warn "HTTPS is disabled; rewrote SHIPYARD_PUBLIC_URL to $PUBLIC_URL"
 fi
 set_env SHIPYARD_PUBLIC_URL "$PUBLIC_URL"
 
-if [[ "$PUBLIC_URL" == https://* && -z "$(get_env SHIPYARD_ACME_EMAIL)" ]]; then
+if [[ $HTTPS -eq 1 && "$PUBLIC_URL" == https://* && -z "$(get_env SHIPYARD_ACME_EMAIL)" ]]; then
   ACME_EMAIL=""
   prompt ACME_EMAIL "Email for Let's Encrypt (empty to skip)" ""
   if [[ -n "$ACME_EMAIL" ]]; then
@@ -241,27 +286,31 @@ chmod 600 .env
 
 # ---------------------------------------------------------------- firewall
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-  log "ufw is active — allowing ${HOST_PORT:-80}/tcp, ${HOST_PORT:-443}/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp"
+  allowed="${HOST_PORT:-80}/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp"
+  if [[ $HTTPS -eq 1 ]]; then allowed="${HOST_PORT:-80}/tcp, 443/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp"; fi
+  log "ufw is active — allowing $allowed"
   ufw allow "${HOST_PORT:-80}/tcp" >/dev/null
-  ufw allow "${HOST_PORT:-443}/tcp" >/dev/null
+  if [[ $HTTPS -eq 1 ]]; then ufw allow 443/tcp >/dev/null; fi
   ufw allow "${HTTP_PORT:-${ui_port_default}}/tcp" >/dev/null
 fi
 
 # ---------------------------------------------------------------- start
 if [[ $START -eq 1 ]]; then
-  if command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ':(${HOST_PORT:-80}|${HOST_PORT:-443}) '; then
-    warn "ports ${HOST_PORT:-80}/${HOST_PORT:-443} already have listeners — the Caddy service may fail to start"
+  if command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ":${HOST_PORT:-80} "; then
+    warn "port ${HOST_PORT:-80} already has a listener — the Caddy service may fail to start"
   fi
   if [[ -n "$HTTP_PORT" ]] && command -v ss >/dev/null && ss -lnt 2>/dev/null | grep -qE ":${HTTP_PORT} "; then
     warn "port ${HTTP_PORT} already has a listener — the Shipyard UI service may fail to start"
   fi
 
   # Update docker-compose.yml to use HOST_PORT and HTTP_PORT if specified
+  if [[ $HTTPS -eq 0 ]]; then
+    sed -i '/:443/d' docker-compose.yml
+  fi
+
   if [[ -n "$HOST_PORT" ]]; then
-    log "Adjusting docker-compose.yml to use host port $HOST_PORT for Caddy"
-    sed -i "s/\"80:80\"/\"${HOST_PORT}:80\"/g" docker-compose.yml
-    sed -i "s/\"443:443\"/\"${HOST_PORT}:443\"/g" docker-compose.yml
-    sed -i "s/\"443:443\/udp\"/\"${HOST_PORT}:443\/udp\"/g" docker-compose.yml
+    log "Adjusting docker-compose.yml to use host port $HOST_PORT for Caddy HTTP"
+    sed -i "s|\"80:80\"|\"${HOST_PORT}:80\"|g" docker-compose.yml
   fi
 
   if [[ -n "$HTTP_PORT" ]]; then
@@ -273,7 +322,14 @@ if [[ $START -eq 1 ]]; then
   fi
 
   log "Building and starting Shipyard (the first build takes a few minutes)..."
-  docker compose up -d --build
+  host_data="$(get_env SHIPYARD_HOST_DATA)"
+  host_data="${host_data:-/var/lib/shipyard}"
+  # A Caddyfile generated while HTTPS was on would keep Caddy on TLS; start clean.
+  if [[ $HTTPS -eq 0 && -f "${host_data}/caddy/Caddyfile" ]]; then
+    log "Removing stale generated Caddyfile (HTTPS disabled)"
+    rm -f "${host_data}/caddy/Caddyfile"
+  fi
+  docker compose up -d --build --force-recreate
 
   log "Waiting for the API to become healthy..."
   healthy=0
@@ -298,6 +354,9 @@ printf '  Logs     : cd %s && docker compose logs -f shipyard\n' "$SHIPYARD_ROOT
 printf '  Stop     : cd %s && docker compose down\n' "$SHIPYARD_ROOT"
 backup_dir="$(get_env SHIPYARD_HOST_DATA)"
 printf '  Backup   : %s/database/ (shipyard.db + secret.key)\n' "${backup_dir:-/var/lib/shipyard}"
+if [[ $HTTPS -eq 0 ]]; then
+  printf '  HTTPS    : disabled (plain HTTP only; set SHIPYARD_HTTPS=true in .env to enable)\n'
+fi
 if [[ $DEV -eq 1 ]]; then
   printf '  Dev      : java 21 + maven + node installed; run scripts/dev.sh\n'
 fi

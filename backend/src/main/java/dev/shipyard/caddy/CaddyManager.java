@@ -63,10 +63,19 @@ public class CaddyManager {
 
     public void reloadAsync() {
         async.submit(() -> {
-            try {
-                reload();
-            } catch (RuntimeException e) {
-                log.warn("Caddy reload failed", e);
+            for (int attempt = 1; attempt <= 5; attempt++) {
+                try {
+                    ReloadResult r = reload();
+                    if (r.applied() || props.caddyAdminUrl() == null || props.caddyAdminUrl().isBlank()) return;
+                } catch (RuntimeException e) {
+                    log.warn("Caddy reload failed (attempt {})", attempt, e);
+                }
+                try {
+                    Thread.sleep(1000L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
             }
         });
     }
@@ -115,13 +124,14 @@ public class CaddyManager {
     }
 
     public String render() {
+        boolean https = props.https();
         List<CaddyRoute> routes = new ArrayList<>();
         for (Application app : applications.findAll()) {
             List<CaddyRoute.Host> hosts = new ArrayList<>();
             for (Domain d : domains.findByApplication(app.id())) hosts.add(new CaddyRoute.Host(d.hostname(), d.tlsEnabled()));
             if (props.baseDomain() != null && !props.baseDomain().isBlank()) {
                 String h = app.slug() + "." + props.baseDomain().strip();
-                if (hosts.stream().noneMatch(x -> x.hostname().equals(h))) hosts.add(new CaddyRoute.Host(h, true));
+                if (hosts.stream().noneMatch(x -> x.hostname().equals(h))) hosts.add(new CaddyRoute.Host(h, https));
             }
             if (hosts.isEmpty()) continue;
             Deployment current = app.currentDeploymentId() == null ? null : deployments.findById(app.currentDeploymentId()).orElse(null);
@@ -135,7 +145,8 @@ public class CaddyManager {
                 routes.add(new CaddyRoute(app.slug(), hosts, null, current.containerName() + ":" + current.internalPort(), null));
             }
         }
-        return CaddyConfigGenerator.generate(adminDirective(), props.acmeEmail(), props.platformDomain(), props.platformUpstream(), routes);
+        return CaddyConfigGenerator.generate(adminDirective(), https, props.acmeEmail(), props.platformDomain(), props.platformUpstream(),
+                routes);
     }
 
     /** The admin directive must keep Caddy listening where the platform will reach it next time. */

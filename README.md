@@ -64,7 +64,9 @@ there, content type `application/json`, and the *push* event. Use **Test webhook
 to check the configuration without deploying.
 
 Point each domain's DNS at the server. Caddy obtains and renews certificates
-automatically; switch HTTPS off for LAN-only names.
+automatically; switch HTTPS off for a single LAN-only name, or set
+`SHIPYARD_HTTPS=false` to serve the whole platform over plain HTTP (no
+certificates, no 443 listener) — for example behind another TLS proxy.
 
 ## How an application is built
 
@@ -118,6 +120,7 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 | `SHIPYARD_PUBLIC_URL` | `http://localhost:8080` | Base URL used for webhook URLs |
 | `SHIPYARD_PLATFORM_DOMAIN` | – | Serve the UI through Caddy on this hostname |
 | `SHIPYARD_BASE_DOMAIN` | – | Also serve every app at `<slug>.<base domain>` |
+| `SHIPYARD_HTTPS` | `false` | Plain HTTP by default; `true` enables automatic TLS certificates on port 443 |
 | `SHIPYARD_ACME_EMAIL` | – | Let's Encrypt account email |
 | `SHIPYARD_DATA_DIR` | `/var/lib/shipyard` | Database, repositories, artifacts, Caddyfile |
 | `SHIPYARD_CADDY_ADMIN_URL` | – | `unix:/path/admin.sock` or `http://caddy:2019` |

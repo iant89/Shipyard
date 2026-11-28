@@ -93,6 +93,7 @@ public class PlatformController {
         m.put("dockerNetwork", props.dockerNetwork());
         m.put("publicUrl", props.publicUrlNoSlash());
         m.put("platformDomain", props.platformDomain());
+        m.put("https", props.https());
         m.put("baseDomain", props.baseDomain());
         m.put("dataDir", props.dataDir());
         m.put("caddyAdminConfigured", props.caddyAdminUrl() != null && !props.caddyAdminUrl().isBlank());

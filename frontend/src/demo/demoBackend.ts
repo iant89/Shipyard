@@ -952,7 +952,7 @@ export function createDemoApi(): Api {
     platform: {
       info: () => wrap(() => ({
         name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard',
-        publicUrl: 'https://shipyard.example.com', platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
+        publicUrl: 'https://shipyard.example.com', https: true, platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
         caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
       })),
       caddy: () => wrap(() => ({ config: caddyfile(), status: `Applied at ${iso(now() - 4 * MIN)}` })),

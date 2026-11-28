@@ -61,11 +61,11 @@ public class ApplicationViews {
         List<String> urls = new ArrayList<>();
         String primary = null;
         for (Domain d : domains.findByApplication(a.id())) {
-            String u = (d.tlsEnabled() ? "https://" : "http://") + d.hostname();
+            String u = (props.https() && d.tlsEnabled() ? "https://" : "http://") + d.hostname();
             urls.add(u);
             if (d.primary()) primary = u;
         }
-        if (props.baseDomain() != null && !props.baseDomain().isBlank()) urls.add("https://" + a.slug() + "." + props.baseDomain().strip());
+        if (props.baseDomain() != null && !props.baseDomain().isBlank()) urls.add((props.https() ? "https://" : "http://") + a.slug() + "." + props.baseDomain().strip());
         if (primary == null && !urls.isEmpty()) primary = urls.get(0);
         Deployment typed = current != null ? current : latest;
         return new ApplicationSummary(a.id(), a.slug(), a.name(), a.description(), a.status().name(), rv, deployment(current),
