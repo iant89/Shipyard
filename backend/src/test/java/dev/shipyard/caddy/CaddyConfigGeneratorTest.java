@@ -33,6 +33,20 @@ class CaddyConfigGeneratorTest {
     }
 
     @Test
+    void rendersMaintenancePageAsUncachedHtml503() {
+        String cfg = CaddyConfigGenerator.generate(null, false, null, null, null,
+                List.of(CaddyRoute.maintenance("updating", List.of(new CaddyRoute.Host("updating.example.com", false)))));
+
+        assertThat(cfg).contains("http://updating.example.com {")
+                .contains("header Content-Type \"text/html; charset=utf-8\"")
+                .contains("header Cache-Control \"no-store\"")
+                .contains("respond \"<!doctype html>")
+                .contains("<h1>We'll be back shortly</h1>")
+                .contains("This application is currently being updated, please try again in a few minutes.")
+                .contains(" 503");
+    }
+
+    @Test
     void httpsDisabledServesEverySiteOverPlainHttp() {
         String cfg = CaddyConfigGenerator.generate("unix//run/caddy-admin/admin.sock", false, "ops@example.com", "platform.example.com",
                 "shipyard:8080", List.of(

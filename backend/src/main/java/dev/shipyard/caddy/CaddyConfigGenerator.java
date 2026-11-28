@@ -15,6 +15,20 @@ public final class CaddyConfigGenerator {
             "application/manifest+json*", "application/geo+json*", "application/wasm*",
             "image/svg+xml*", "image/x-icon*", "image/vnd.microsoft.icon*", "font/*");
 
+    private static final String MAINTENANCE_MESSAGE =
+            "This application is currently being updated, please try again in a few minutes.";
+    private static final String MAINTENANCE_PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
+            + "<title>Application update in progress</title></head>"
+            + "<body style=\"box-sizing:border-box;min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;"
+            + "background:#f5f7fa;color:#182230;font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,sans-serif\">"
+            + "<main style=\"box-sizing:border-box;width:100%;max-width:480px;padding:42px 28px;text-align:center;"
+            + "background:#fff;border:1px solid #e5eaf0;border-radius:24px;box-shadow:0 16px 48px rgba(16,24,40,.08)\">"
+            + "<div style=\"display:grid;place-items:center;width:56px;height:56px;margin:0 auto 24px;border-radius:50%;"
+            + "background:#eff6ff;color:#2563eb;font-size:28px\" aria-hidden=\"true\">&#8635;</div>"
+            + "<h1 style=\"margin:0 0 12px;font-size:24px;line-height:1.25\">We'll be back shortly</h1>"
+            + "<p style=\"margin:0;color:#596579\">" + MAINTENANCE_MESSAGE + "</p></main></body></html>";
+
     public static String generate(String adminDirective, boolean https, String acmeEmail, String platformDomain, String platformUpstream,
                                   List<CaddyRoute> routes) {
         StringBuilder f = new StringBuilder();
@@ -47,7 +61,11 @@ public final class CaddyConfigGenerator {
                     .collect(Collectors.joining(", "));
             f.append("# application: ").append(r.applicationSlug()).append('\n');
             f.append(addresses).append(" {\n\timport shipyard_common\n");
-            if (r.staticRoot() != null) {
+            if (r.maintenance()) {
+                f.append("\theader Content-Type \"text/html; charset=utf-8\"\n");
+                f.append("\theader Cache-Control \"no-store\"\n");
+                f.append("\trespond ").append(quote(MAINTENANCE_PAGE)).append(" 503\n");
+            } else if (r.staticRoot() != null) {
                 f.append("\troot * ").append(quote(r.staticRoot())).append('\n');
                 f.append("\ttry_files {path} {path}/ /index.html\n");
                 f.append("\tfile_server\n");

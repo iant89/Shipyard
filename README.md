@@ -120,10 +120,12 @@ applications deploy concurrently (`SHIPYARD_WORKER_THREADS`). With *cancel stale
 builds* on, a newer push cancels deployments that are still queued, so the newest
 commit wins.
 
-A new server deployment starts in its own container next to the current one. Only
-after its health check passes (HTTP 2xx/3xx on the configured path, TCP, or
-process stability) does Shipyard regenerate the Caddy configuration and retire the
-previous container. Its image and static artifacts are kept
+A new server deployment starts in its own container next to the current one. Once
+a deployment or rollback starts running, the application's URLs show a maintenance
+page. Only after its health check passes (HTTP 2xx/3xx on the configured path, TCP,
+or process stability) does Shipyard point Caddy to the new deployment and retire the
+previous container. Successful updates switch to the new deployment, while failed
+updates restore the previous version. Images and static artifacts are kept
 (`SHIPYARD_RETAIN_DEPLOYMENTS`) for instant rollback.
 
 ### Persistent volumes
