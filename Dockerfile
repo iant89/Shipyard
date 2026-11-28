@@ -19,7 +19,7 @@ COPY backend/src ./src
 COPY --from=frontend /src/frontend/dist ./src/main/resources/static
 RUN mvn -B -q -DskipTests package
 
-# ---------------------------------------------------------------- docker CLI (+ buildx for static exports)
+# ---------------------------------------------------------------- docker CLI (+ buildx for static exports, compose for self-update)
 FROM docker:27-cli AS dockercli
 
 # ---------------------------------------------------------------- runtime
@@ -29,8 +29,12 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
+COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 COPY --from=backend /src/backend/target/shipyard.jar /opt/shipyard/shipyard.jar
-ENV SHIPYARD_DATA_DIR=/var/lib/shipyard \
+# The commit this image was built from (set by scripts/self-update.sh and the installer); shown in Settings.
+ARG SHIPYARD_COMMIT=
+ENV SHIPYARD_COMMIT=${SHIPYARD_COMMIT} \
+    SHIPYARD_DATA_DIR=/var/lib/shipyard \
     JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75"
 VOLUME /var/lib/shipyard
 EXPOSE 8080

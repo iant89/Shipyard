@@ -1,6 +1,6 @@
 import type {
   ApplicationDetail, ApplicationMetrics, ApplicationSummary, AuditEvent, AuthStatus, DashboardData, Deployment,
-  DetectionPreview, DetectionResult, Domain, EnvVar, LogLine, MetricSample, PlatformInfo, UpdateCheck, WebhookEvent, WebhookTestResult, WebhookView,
+  DetectionPreview, DetectionResult, Domain, EnvVar, LogLine, MetricSample, PlatformInfo, PlatformUpdateStatus, PlatformVersion, UpdateCheck, WebhookEvent, WebhookTestResult, WebhookView,
 } from './types';
 
 /** Error raised for non-2xx API responses; `message` carries the server's problem detail. */
@@ -84,6 +84,7 @@ export interface CreateApplicationRequest {
   branch: string;
   accessToken?: string;
   autoDeploy: boolean;
+  autoUpdate?: boolean;
   domains: string[];
   service: ServiceSettings;
   environment: { name: string; value: string; secret: boolean }[];
@@ -100,6 +101,7 @@ export interface UpdateApplicationRequest {
   autoDeploy?: boolean;
   autoRollback?: boolean;
   cancelStaleBuilds?: boolean;
+  autoUpdate?: boolean;
   service?: ServiceSettings;
 }
 
@@ -119,6 +121,10 @@ export const api = {
     caddy: () => get<{ config: string; status: string }>('/api/platform/caddy'),
     metrics: () => get<{ latest: MetricSample; history: MetricSample[] }>('/api/metrics/host'),
     reloadCaddy: () => post<{ applied: boolean; message: string }>('/api/platform/caddy/reload'),
+    version: (refresh = false) => get<PlatformVersion>(`/api/platform/update${refresh ? '?refresh=true' : ''}`),
+    /** Undefined when Shipyard was never updated from the UI. Works without a session (the update restarts Shipyard). */
+    updateStatus: () => get<PlatformUpdateStatus | undefined>('/api/platform/update/status'),
+    startUpdate: (commit: string) => post<PlatformUpdateStatus>('/api/platform/update', { commit }),
     activity: (limit = 100) => get<AuditEvent[]>(`/api/activity?limit=${limit}`),
     deployments: (limit = 100) => get<Deployment[]>(`/api/deployments?limit=${limit}`),
     webhookEvents: (limit = 50) => get<WebhookEvent[]>(`/api/webhook-events?limit=${limit}`),

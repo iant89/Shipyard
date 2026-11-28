@@ -60,6 +60,21 @@ public class DeploymentRepository {
         return n != null && n > 0;
     }
 
+    /** Whether this commit was ever deployed (or attempted), whatever the outcome. */
+    public boolean existsForCommit(String applicationId, String sha) {
+        Long n = jdbc.queryForObject("SELECT COUNT(*) FROM deployments WHERE application_id = ? AND commit_sha = ?", Long.class, applicationId, sha);
+        return n != null && n > 0;
+    }
+
+    /** Whether a deployment of this application is queued or in progress. */
+    public boolean hasPending(String applicationId) {
+        Long n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM deployments WHERE application_id = ?
+                  AND status IN ('CREATED','QUEUED','CLONING','DETECTING','BUILDING','TESTING','DEPLOYING','STARTING','HEALTH_CHECK')""",
+                Long.class, applicationId);
+        return n != null && n > 0;
+    }
+
     public int nextNumber(String applicationId) {
         Integer n = jdbc.queryForObject("SELECT COALESCE(MAX(number), 0) + 1 FROM deployments WHERE application_id = ?", Integer.class, applicationId);
         return n == null ? 1 : n;

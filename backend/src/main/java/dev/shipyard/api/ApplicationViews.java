@@ -8,6 +8,7 @@ import dev.shipyard.deployments.Deployment;
 import dev.shipyard.deployments.DeploymentRepository;
 import dev.shipyard.domains.Domain;
 import dev.shipyard.domains.DomainRepository;
+import dev.shipyard.domains.PublicUrls;
 import dev.shipyard.metrics.MetricSample;
 import dev.shipyard.metrics.MetricsService;
 import dev.shipyard.repositories.GitRepository;
@@ -26,7 +27,7 @@ public class ApplicationViews {
     public record ApplicationSummary(String id, String slug, String name, String description, String status,
                                      RepositoryView repository, DeploymentSummary currentDeployment, DeploymentSummary latestDeployment,
                                      String primaryUrl, List<String> urls, MetricSample metrics, String projectType, String framework,
-                                     boolean autoDeploy, String updatedAt) {}
+                                     boolean autoDeploy, boolean autoUpdate, String updatedAt) {}
 
     public record ApplicationDetail(ApplicationSummary summary, ServiceConfig service, List<Domain> domains, boolean autoRollback,
                                     boolean cancelStaleBuilds, int buildConcurrency, String createdAt) {}
@@ -42,9 +43,11 @@ public class ApplicationViews {
     private final ServiceRepository services;
     private final MetricsService metrics;
     private final PlatformProperties props;
+    private final PublicUrls publicUrls;
 
     public ApplicationViews(GitRepositoryStore repositories, DeploymentRepository deployments, DomainRepository domains,
-                            ServiceRepository services, MetricsService metrics, PlatformProperties props) {
+                            ServiceRepository services, MetricsService metrics, PlatformProperties props, PublicUrls publicUrls) {
+        this.publicUrls = publicUrls;
         this.repositories = repositories;
         this.deployments = deployments;
         this.domains = domains;
@@ -61,16 +64,16 @@ public class ApplicationViews {
         List<String> urls = new ArrayList<>();
         String primary = null;
         for (Domain d : domains.findByApplication(a.id())) {
-            String u = (props.https() && d.tlsEnabled() ? "https://" : "http://") + d.hostname();
+            String u = publicUrls.url(d.hostname(), props.https() && d.tlsEnabled());
             urls.add(u);
             if (d.primary()) primary = u;
         }
-        if (props.baseDomain() != null && !props.baseDomain().isBlank()) urls.add((props.https() ? "https://" : "http://") + a.slug() + "." + props.baseDomain().strip());
+        if (props.baseDomain() != null && !props.baseDomain().isBlank()) urls.add(publicUrls.url(a.slug() + "." + props.baseDomain().strip(), props.https()));
         if (primary == null && !urls.isEmpty()) primary = urls.get(0);
         Deployment typed = current != null ? current : latest;
         return new ApplicationSummary(a.id(), a.slug(), a.name(), a.description(), a.status().name(), rv, deployment(current),
                 deployment(latest), primary, urls, metrics.latest(a.id()), typed == null ? null : typed.projectType(),
-                typed == null ? null : typed.framework(), a.autoDeploy(), a.updatedAt());
+                typed == null ? null : typed.framework(), a.autoDeploy(), a.autoUpdate(), a.updatedAt());
     }
 
     public ApplicationDetail detail(Application a) {

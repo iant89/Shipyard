@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button, Card, DescriptionList, Form, FormGroup, PasswordInput, Page, SegmentedButton, Select, THEMES, type ThemePreference } from '@enterprise-ui/react';
 import { api } from '../services/api';
 import { useResource } from '../hooks/useResource';
 import { useAsyncAction } from '../hooks/useAsyncAction';
 import { usePreferences } from '../state/preferences';
 import { useSession } from '../state/session';
+import { ShipyardUpdatesCard } from './settings/ShipyardUpdatesCard';
 
 /** Platform settings: appearance (theme, density), account and platform information. */
 export function SettingsPage() {
@@ -14,6 +16,10 @@ export function SettingsPage() {
   const { busy, run } = useAsyncAction();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === '#updates') document.getElementById('updates')?.scrollIntoView({ block: 'start' });
+  }, [hash]);
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +73,8 @@ export function SettingsPage() {
             <div><Button type="submit" loading={busy === 'pw'}>Change password</Button></div>
           </Form>
         </Card>
+
+        <ShipyardUpdatesCard />
 
         <Card title="Platform">
           <DescriptionList columns={2} items={[

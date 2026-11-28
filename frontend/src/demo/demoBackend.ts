@@ -7,9 +7,10 @@
  */
 import type { api as realApi, CreateApplicationRequest, ServiceSettings, UpdateApplicationRequest } from '../services/api';
 import type { EventTransport } from '../services/events';
+import { appUrl, isLocalHostname } from '../services/format';
 import type {
   ApplicationDetail, ApplicationStatus, ApplicationSummary, AuditEvent, DetectionPreview, DetectionResult, Deployment, DeploymentSource,
-  DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck,
+  DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck, PlatformUpdateStatus, PlatformVersion,
 } from '../services/types';
 
 type Api = typeof realApi;
@@ -18,6 +19,8 @@ type Listener = (e: PlatformEvent) => void;
 // ---------------------------------------------------------------- helpers
 
 const MIN = 60_000;
+/** The demo pretends Caddy is published on host port 8081, so local hostnames show the port. */
+const DEMO_HTTP_PORT = 8081;
 const now = () => Date.now();
 const iso = (t: number) => new Date(t).toISOString();
 let idSeq = 0;
@@ -69,6 +72,8 @@ interface AppState {
   branch: string;
   privateRepo: boolean;
   autoDeploy: boolean;
+  /** Poll the branch every 90 seconds and deploy new commits. */
+  autoUpdate: boolean;
   autoRollback: boolean;
   cancelStaleBuilds: boolean;
   profile: Profile;
@@ -220,7 +225,7 @@ function seedApp(name: string, repo: string, profile: Profile, count: number, op
   const id = slugify(name);
   const a: AppState = {
     id, slug: slugify(name), name, description: opts.description ?? null, status: 'RUNNING', repo, branch: 'main', privateRepo: false,
-    autoDeploy: true, autoRollback: true, cancelStaleBuilds: true, profile, service: serviceFor(id, profile), currentId: null,
+    autoDeploy: true, autoUpdate: false, autoRollback: true, cancelStaleBuilds: true, profile, service: serviceFor(id, profile), currentId: null,
     deployments: [], branchCommits: [], logs: new Map(), domains: [], env: opts.env ?? [], webhookEndpoint: sha().slice(0, 40), webhookSecret: sha().slice(0, 64),
     deployOnPush: true, webhookEvents: [], metrics: [], queue: [], busy: false, cancelRequested: null, createdAt: iso(created), updatedAt: iso(now() - 40 * MIN),
   };
@@ -330,6 +335,15 @@ function seed() {
   for (let i = 0; i < 120; i++) hostHistory.push(hostSample(now() - (120 - i) * 5000, i));
   audit.sort((x, y) => y.timestamp.localeCompare(x.timestamp));
 
+  // Automatic updates: same rules as the server's CommitPoller.
+  setInterval(() => {
+    for (const a of apps) {
+      if (!a.autoUpdate || !a.currentId || a.status === 'STOPPED' || a.busy || a.queue.length) continue;
+      const head = a.branchCommits[0];
+      if (head && !a.deployments.some((d) => d.commitSha === head.sha)) requestDeployment(a, 'SCHEDULED', head.sha);
+    }
+  }, 90_000);
+
   let tick = 120;
   setInterval(() => {
     tick++;
@@ -372,15 +386,15 @@ function requestLogLine(a: AppState): string {
 
 function summary(a: AppState): ApplicationSummary {
   const current = a.deployments.find((d) => d.id === a.currentId) ?? null;
-  const urls = a.domains.map((d) => `${d.tlsEnabled ? 'https' : 'http'}://${d.hostname}`);
+  const urls = a.domains.map((d) => appUrl(d.hostname, d.tlsEnabled, DEMO_HTTP_PORT));
   const primary = a.domains.find((d) => d.primary);
   return {
     id: a.id, slug: a.slug, name: a.name, description: a.description, status: a.status,
     repository: { provider: 'GITHUB', url: `https://github.com/${a.repo}.git`, fullName: a.repo, branch: a.branch, privateRepository: a.privateRepo },
     currentDeployment: current, latestDeployment: a.deployments[0] ?? null,
-    primaryUrl: primary ? `${primary.tlsEnabled ? 'https' : 'http'}://${primary.hostname}` : urls[0] ?? null, urls,
+    primaryUrl: primary ? appUrl(primary.hostname, primary.tlsEnabled, DEMO_HTTP_PORT) : urls[0] ?? null, urls,
     metrics: a.profile.kind === 'SERVER' && a.currentId && a.status !== 'STOPPED' ? a.metrics[a.metrics.length - 1] ?? null : null,
-    projectType: a.profile.kind, framework: a.profile.framework, autoDeploy: a.autoDeploy, updatedAt: a.updatedAt,
+    projectType: a.profile.kind, framework: a.profile.framework, autoDeploy: a.autoDeploy, autoUpdate: a.autoUpdate, updatedAt: a.updatedAt,
   };
 }
 
@@ -706,6 +720,58 @@ export function demoApplications() {
   return apps.map((a) => ({ id: a.id, name: a.name, kind: a.profile.kind }));
 }
 
+// ---------------------------------------------------------------- Shipyard self-update (simulated)
+
+const platform = {
+  commit: sha(),
+  branch: 'main',
+  newer: [] as CommitInfo[], // newest first
+  update: null as PlatformUpdateStatus | null,
+  seeded: false,
+};
+function seedPlatform() {
+  if (platform.seeded) return;
+  platform.seeded = true;
+  platform.newer = [
+    { sha: sha(), author: 'iant89', message: 'Show a banner when newer commits are available', timestamp: iso(now() - 2 * 3600_000) },
+    { sha: sha(), author: 'iant89', message: 'Fix overflow menus crashing on open', timestamp: iso(now() - 26 * 3600_000) },
+  ];
+}
+function platformVersion(): PlatformVersion {
+  seedPlatform();
+  return {
+    commit: platform.commit, branch: platform.branch, repository: 'iant89/shipyard', canUpdate: true, reason: null, update: platform.update,
+    check: {
+      status: platform.newer.length ? 'BEHIND' : 'UP_TO_DATE', branch: platform.branch, currentSha: platform.commit,
+      latestSha: platform.newer[0]?.sha ?? platform.commit, behind: platform.newer.length, commits: platform.newer, checkedAt: iso(now()), message: null,
+    },
+  };
+}
+function startPlatformUpdate(commit: string): PlatformUpdateStatus {
+  seedPlatform();
+  const idx = platform.newer.findIndex((c) => c.sha === commit);
+  if (idx < 0) throw new DemoError(400, `Commit ${commit.slice(0, 7)} is not a newer commit on main`);
+  if (platform.update?.state === 'RUNNING') throw new DemoError(409, 'An update is already running');
+  const from = platform.commit;
+  const u: PlatformUpdateStatus = { state: 'RUNNING', fromSha: from, toSha: commit, message: 'Starting the updater', startedAt: iso(now()), finishedAt: null, log: [] };
+  platform.update = u;
+  const steps: [number, string][] = [
+    [800, `Fetching origin/main`], [1600, `Updating ${from.slice(0, 7)} → ${commit.slice(0, 7)} (${platform.newer.length - idx} commits)`],
+    [2600, 'Building the new image (this takes a few minutes)'], [6500, 'Stopping Shipyard and backing up the database'],
+    [7500, `Starting Shipyard ${commit.slice(0, 7)}`],
+  ];
+  for (const [ms, line] of steps) {
+    setTimeout(() => { u.message = line; u.log = [...u.log, `[${iso(now())}] ${line}`]; }, ms);
+  }
+  setTimeout(() => {
+    const done = `Updated to ${commit.slice(0, 7)}.`;
+    Object.assign(u, { state: 'SUCCEEDED', message: done, finishedAt: iso(now()), log: [...u.log, `[${iso(now())}] ${done}`] });
+    platform.commit = commit;
+    platform.newer = platform.newer.slice(0, idx);
+  }, 10_000);
+  return { ...u };
+}
+
 // ---------------------------------------------------------------- API implementation
 
 function wrap<T>(fn: () => T, ms?: number): Promise<T> {
@@ -731,10 +797,10 @@ export function createDemoApi(): Api {
       const t = iso(now());
       const a: AppState = {
         id, slug, name: body.name || repo.split('/')[1], description: body.description ?? null, status: 'CREATED', repo, branch: body.branch,
-        privateRepo: !!body.accessToken, autoDeploy: body.autoDeploy, autoRollback: true, cancelStaleBuilds: true, profile: p,
+        privateRepo: !!body.accessToken, autoDeploy: body.autoDeploy, autoUpdate: !!body.autoUpdate, autoRollback: true, cancelStaleBuilds: true, profile: p,
         service: serviceFor(id, p, body.service), currentId: null, deployments: [], logs: new Map(),
         branchCommits: [{ sha: sha(), author: pick(AUTHORS), message: pick(MESSAGES), timestamp: t }],
-        domains: body.domains.map((h, i) => ({ id: uid('dom'), applicationId: id, hostname: h.toLowerCase(), tlsEnabled: true, primary: i === 0, createdAt: t })),
+        domains: body.domains.map((h, i) => ({ id: uid('dom'), applicationId: id, hostname: h.toLowerCase(), tlsEnabled: !isLocalHostname(h), primary: i === 0, createdAt: t })),
         env: body.environment.map((e) => ({ ...e, updatedAt: t })), webhookEndpoint: sha(), webhookSecret: sha() + sha().slice(0, 24),
         deployOnPush: true, webhookEvents: [], metrics: [], queue: [], busy: false, cancelRequested: null, createdAt: t, updatedAt: t,
       };
@@ -753,6 +819,7 @@ export function createDemoApi(): Api {
       if (body.accessToken) a.privateRepo = true;
       if (body.clearAccessToken) a.privateRepo = false;
       if (body.autoDeploy !== undefined) a.autoDeploy = body.autoDeploy;
+      if (body.autoUpdate !== undefined) a.autoUpdate = body.autoUpdate;
       if (body.autoRollback !== undefined) a.autoRollback = body.autoRollback;
       if (body.cancelStaleBuilds !== undefined) a.cancelStaleBuilds = body.cancelStaleBuilds;
       if (body.service) {
@@ -978,11 +1045,14 @@ export function createDemoApi(): Api {
       info: () => wrap(() => ({
         name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard',
         publicUrl: 'https://shipyard.example.com', https: true, platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
-        caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
+        httpPort: DEMO_HTTP_PORT, mdns: { enabled: true, running: true, addresses: ['eth0 192.168.1.20'] }, caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
       })),
       caddy: () => wrap(() => ({ config: caddyfile(), status: `Applied at ${iso(now() - 4 * MIN)}` })),
       metrics: () => wrap(() => ({ latest: hostHistory[hostHistory.length - 1], history: hostHistory })),
       reloadCaddy: () => wrap(() => ({ applied: true, message: 'Caddy configuration applied' }), 500),
+      version: () => wrap(platformVersion, 700),
+      updateStatus: () => wrap(() => (platform.update ? { ...platform.update } : undefined)),
+      startUpdate: (commit: string) => wrap(() => startPlatformUpdate(commit), 600),
       activity: (limit = 100) => wrap(() => audit.slice(0, limit)),
       deployments: (limit = 100) => wrap(() => apps.flatMap((a) => a.deployments.filter((d) => d.number > 0))
         .sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit)),

@@ -15,6 +15,7 @@ interface Values {
   autoDeploy: boolean;
   autoRollback: boolean;
   cancelStaleBuilds: boolean;
+  autoUpdate: boolean;
   projectType: string;
   buildStrategy: string;
   rootDirectory: string;
@@ -43,6 +44,7 @@ const fromDetail = (d: ApplicationDetail): Values => ({
   autoDeploy: d.summary.autoDeploy,
   autoRollback: d.autoRollback,
   cancelStaleBuilds: d.cancelStaleBuilds,
+  autoUpdate: d.summary.autoUpdate,
   projectType: d.service.projectType ?? '',
   buildStrategy: d.service.buildStrategy ?? '',
   rootDirectory: d.service.rootDirectory === '.' ? '' : d.service.rootDirectory,
@@ -98,7 +100,7 @@ export function SettingsTab({ detail, onSaved }: { detail: ApplicationDetail; on
     const r = await run('save', () => api.applications.update(detail.summary.id, {
       name: v.name, description: v.description, repository: v.repository, branch: v.branch,
       accessToken: v.token || undefined, clearAccessToken: v.clearToken,
-      autoDeploy: v.autoDeploy, autoRollback: v.autoRollback, cancelStaleBuilds: v.cancelStaleBuilds, service,
+      autoDeploy: v.autoDeploy, autoRollback: v.autoRollback, cancelStaleBuilds: v.cancelStaleBuilds, autoUpdate: v.autoUpdate, service,
     }), 'Settings saved. They apply to the next deployment.');
     if (r) onSaved(r);
   };
@@ -188,6 +190,8 @@ export function SettingsTab({ detail, onSaved }: { detail: ApplicationDetail; on
         <Card title="Automation">
           <FormGroup columns={2}>
             <Switch label="Automatic deployment" checked={v.autoDeploy} onChange={(c) => set('autoDeploy', c)} description="Deploy on push through the GitHub webhook." />
+            <Switch label="Automatic updates" checked={v.autoUpdate} onChange={(c) => set('autoUpdate', c)}
+              description="Check the branch every 90 seconds and deploy new commits. Works without a webhook; a commit that fails is not retried." />
             <Switch label="Automatic rollback" checked={v.autoRollback} onChange={(c) => set('autoRollback', c)}
               description="Remove a failed new container immediately. Off keeps it stopped for inspection. The current deployment stays online either way." />
             <Switch label="Cancel stale builds" checked={v.cancelStaleBuilds} onChange={(c) => set('cancelStaleBuilds', c)} description="A newer push cancels deployments that are still queued." />

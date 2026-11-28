@@ -63,6 +63,21 @@ GitHub (*Settings → Webhooks → Add webhook*) with the payload URL and secret
 there, content type `application/json`, and the *push* event. Use **Test webhook**
 to check the configuration without deploying.
 
+No webhook (for example, a server GitHub can't reach)? Turn on **Automatic updates**
+in the application's *Settings*: Shipyard checks the branch every 90 seconds and
+deploys new commits. A commit is tried once, so a failing commit is not rebuilt
+over and over; the next push is picked up as usual. A stopped application is left
+stopped.
+
+`.local` hostnames (`devstick.local`, …) of running applications are published
+on your network with mDNS, so any computer on the LAN resolves them to this
+server with no DNS setup (macOS and iOS natively, Windows 10+, Linux with
+`avahi`/`systemd-resolved`). A name is announced when its application starts and
+withdrawn when it is stopped or deleted. The `mdns` compose service answers; it
+runs on the host network and shares UDP port 5353 with `avahi-daemon` if the
+server runs one. Other local names (`.lan`, `.home`, …) are not mDNS names; point
+them at the server in your router's DNS. Turn it off with `SHIPYARD_MDNS=false`.
+
 Point each domain's DNS at the server. Caddy obtains and renews certificates
 automatically; switch HTTPS off for a single LAN-only name, or set
 `SHIPYARD_HTTPS=false` to serve the whole platform over plain HTTP (no
@@ -130,12 +145,44 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 | `SHIPYARD_CRASH_RESTART_THRESHOLD` | `5` | Restarts before an app is marked CRASHED |
 | `SHIPYARD_ADMIN_USERNAME` / `_PASSWORD` | – | Create the first admin non-interactively |
 | `SHIPYARD_ALLOW_LOCAL_REPOSITORIES` | `false` | Allow `file://` repositories (development) |
+| `SHIPYARD_MDNS` | `true` | Publish `.local` hostnames of running applications on the LAN with mDNS (see below) |
+| `SHIPYARD_MDNS_ADDRESS` | – | Address mDNS answers with (default: the server's address on the asking client's network) |
+| `SHIPYARD_HTTP_PORT` | detected | Host port Caddy's HTTP listener is published on. Local hostnames (`devstick.local`, `localhost`, `.lan`, IPs…) get it in their URLs when it isn't 80. Read from the Caddy container when unset |
 
 ### Backup
 
 Back up the data directory. The essential files are
 `database/shipyard.db` (SQLite) and `database/secret.key` (encrypts environment
 variables, webhook secrets and access tokens — without it they cannot be read).
+
+### Updating Shipyard
+
+Shipyard follows the branch it was installed from (normally `main`). It checks
+that branch for newer commits; when there are some, the header shows **Update
+available** and *Settings → Shipyard updates* lists them. Pick a commit (the newest
+is preselected) and click **Update**. Nothing updates on its own.
+
+The update runs in a short-lived `shipyard-updater` container, using
+[`scripts/self-update.sh`](scripts/self-update.sh) in your checkout:
+
+1. Fast-forwards the checkout to the chosen commit. Local edits, such as ports set by
+   the installer, are kept. If they conflict with the update, it stops and changes nothing.
+2. Builds the new image while the current version keeps running. If the build fails,
+   nothing is restarted.
+3. Stops Shipyard, backs up `database/` to `platform-update/backup/` in the data
+   directory, and starts the new version.
+4. If the new version is not healthy within 5 minutes, restores the previous image,
+   database and checkout.
+
+Your applications keep running throughout. The Shipyard UI is unavailable for a
+minute or two and you sign in again afterwards; the result and log are on the
+same Settings card. Updating is refused while deployments are queued or running.
+
+You can also update from the server: `scripts/self-update.sh [commit]` in the
+Shipyard directory (defaults to the latest commit).
+
+Installs from before self-update need one manual update to get it:
+`git pull && SHIPYARD_COMMIT=$(git rev-parse HEAD) docker compose up -d --build`.
 
 ## Security model
 
@@ -160,6 +207,7 @@ variables, webhook secrets and access tokens — without it they cannot be read)
 scripts/dev.sh                 # API on :8080, UI on http://localhost:5173
 cd backend && mvn test         # unit + end-to-end API tests
 cd frontend && npm run build   # type-check and build the UI
+scripts/test-self-update.sh    # self-update scenarios against a fake docker CLI
 ```
 
 The GitHub Pages site (`frontend/site/`) is the documentation page plus the same UI at `/demo/`

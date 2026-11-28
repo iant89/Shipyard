@@ -15,6 +15,7 @@ import dev.shipyard.deployments.DeploymentSource;
 import dev.shipyard.deployments.DeploymentStatus;
 import dev.shipyard.deployments.QueueItem;
 import dev.shipyard.domains.DomainService;
+import dev.shipyard.domains.PublicUrls;
 import dev.shipyard.environment.EnvironmentService;
 import dev.shipyard.events.EventBus;
 import dev.shipyard.events.EventTypes;
@@ -44,11 +45,11 @@ public class ApplicationService {
 
     public record CreateRequest(String name, String description, String repository, String branch, String accessToken,
                                 boolean autoDeploy, List<String> domains, ServiceSettings service, List<EnvInput> environment,
-                                boolean deployNow) {}
+                                boolean deployNow, Boolean autoUpdate) {}
 
     public record UpdateRequest(String name, String description, String repository, String branch, String accessToken,
                                 Boolean clearAccessToken, Boolean autoDeploy, Boolean autoRollback, Boolean cancelStaleBuilds,
-                                ServiceSettings service) {}
+                                ServiceSettings service, Boolean autoUpdate) {}
 
     private final ApplicationRepository applications;
     private final ServiceRepository services;
@@ -102,7 +103,7 @@ public class ApplicationService {
         String slug = uniqueSlug(req.name());
         String now = Time.now();
         Application app = new Application(Ids.uuid(), slug, req.name().strip(), blankToNull(req.description()), ApplicationStatus.CREATED,
-                null, req.autoDeploy(), true, true, 1, now, now);
+                null, req.autoDeploy(), true, true, 1, Boolean.TRUE.equals(req.autoUpdate()), now, now);
         applications.insert(app);
 
         ServiceSettings s = req.service() == null ? emptySettings() : req.service();
@@ -118,7 +119,7 @@ public class ApplicationService {
         repositories.insert(new GitRepository(Ids.uuid(), app.id(), "GITHUB", url, branch,
                 req.accessToken() == null || req.accessToken().isBlank() ? null : cipher.encrypt(req.accessToken().strip()), now, now));
         webhooks.create(app.id());
-        if (req.domains() != null) for (String d : req.domains()) if (d != null && !d.isBlank()) domains.add(app.id(), d, props.https(), false);
+        if (req.domains() != null) for (String d : req.domains()) if (d != null && !d.isBlank()) domains.add(app.id(), d, props.https() && !PublicUrls.isLocalHostname(DomainService.normalize(d)), false);
         if (req.environment() != null) for (EnvInput e : req.environment()) environment.set(app.id(), e.name(), e.value(), e.secret());
 
         audit.record(AuditActions.USER_CREATED_APPLICATION, "APPLICATION", app.id(), Map.of("name", app.name(), "repository", url));
@@ -139,7 +140,7 @@ public class ApplicationService {
                 req.autoDeploy() != null ? req.autoDeploy() : a.autoDeploy(),
                 req.autoRollback() != null ? req.autoRollback() : a.autoRollback(),
                 req.cancelStaleBuilds() != null ? req.cancelStaleBuilds() : a.cancelStaleBuilds(),
-                a.buildConcurrency(), a.createdAt(), a.updatedAt());
+                a.buildConcurrency(), req.autoUpdate() != null ? req.autoUpdate() : a.autoUpdate(), a.createdAt(), a.updatedAt());
         applications.update(updated);
 
         GitRepository r = repositories.forApplication(id);

@@ -10,6 +10,8 @@ import dev.shipyard.config.PlatformProperties;
 import dev.shipyard.deployments.DeploymentRepository;
 import dev.shipyard.deployments.DeploymentStatus;
 import dev.shipyard.detection.DetectionService;
+import dev.shipyard.domains.PublicUrls;
+import dev.shipyard.mdns.MdnsHostnames;
 import dev.shipyard.events.EventBus;
 import dev.shipyard.metrics.MetricSample;
 import dev.shipyard.metrics.MetricsService;
@@ -44,10 +46,14 @@ public class PlatformController {
     private final EventBus events;
     private final DetectionService detection;
     private final PlatformProperties props;
+    private final PublicUrls publicUrls;
+    private final MdnsHostnames mdns;
 
     public PlatformController(ApplicationRepository applications, DeploymentRepository deployments, WebhookEventStore webhookEvents,
                               MetricsService metrics, ContainerRuntime runtime, CaddyManager caddy, AuditService audit, EventBus events,
-                              DetectionService detection, PlatformProperties props) {
+                              DetectionService detection, PlatformProperties props, PublicUrls publicUrls, MdnsHostnames mdns) {
+        this.mdns = mdns;
+        this.publicUrls = publicUrls;
         this.applications = applications;
         this.deployments = deployments;
         this.webhookEvents = webhookEvents;
@@ -94,6 +100,8 @@ public class PlatformController {
         m.put("publicUrl", props.publicUrlNoSlash());
         m.put("platformDomain", props.platformDomain());
         m.put("https", props.https());
+        m.put("httpPort", publicUrls.httpPort());
+        m.put("mdns", mdns.status());
         m.put("baseDomain", props.baseDomain());
         m.put("dataDir", props.dataDir());
         m.put("caddyAdminConfigured", props.caddyAdminUrl() != null && !props.caddyAdminUrl().isBlank());

@@ -65,6 +65,8 @@ export interface ApplicationSummary {
   projectType: 'STATIC' | 'SERVER' | null;
   framework: string | null;
   autoDeploy: boolean;
+  /** Polls the branch every 90 seconds and deploys new commits. */
+  autoUpdate: boolean;
   updatedAt: string;
 }
 
@@ -249,6 +251,10 @@ export interface PlatformInfo {
   dockerNetwork: string;
   publicUrl: string;
   https: boolean;
+  /** Host port Caddy's HTTP listener is published on; local hostnames' URLs include it when not 80. */
+  httpPort: number;
+  /** .local hostnames of running applications are published with mDNS; running = the responder's heartbeat is fresh. */
+  mdns: { enabled: boolean; running: boolean; addresses: string[] };
   platformDomain: string | null;
   baseDomain: string | null;
   dataDir: string;
@@ -291,4 +297,28 @@ export interface UpdateCheck {
   commits: CommitInfo[];
   checkedAt: string;
   message: string | null;
+}
+
+/** The running (or last) update of Shipyard itself, written by scripts/self-update.sh. */
+export interface PlatformUpdateStatus {
+  state: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'ROLLED_BACK';
+  fromSha: string | null;
+  toSha: string | null;
+  message: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** Only included for a signed-in administrator. */
+  log: string[];
+}
+
+/** Shipyard's installed commit, available updates, and whether this install can update itself. */
+export interface PlatformVersion {
+  commit: string | null;
+  branch: string | null;
+  repository: string | null;
+  check: UpdateCheck | null;
+  canUpdate: boolean;
+  /** Why updating from the UI is unavailable. */
+  reason: string | null;
+  update: PlatformUpdateStatus | null;
 }
