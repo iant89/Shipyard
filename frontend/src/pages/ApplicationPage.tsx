@@ -78,7 +78,7 @@ export function ApplicationPage() {
           {stopped ? (
             <Button icon={<Icon name="media-play" />} loading={busy === 'start'} onClick={() => doAction('start', () => api.applications.start(id), `${a.name} started`)}>Start</Button>
           ) : (
-            <Button icon={<Icon name="stop" />} disabled={!current} onClick={() => setConfirm('stop')}>Stop</Button>
+            <Button variant="destructive" icon={<Icon name="stop" />} disabled={!current} onClick={() => setConfirm('stop')}>Stop</Button>
           )}
           <OverflowMenu
             label="More actions"
@@ -142,10 +142,10 @@ export function ApplicationPage() {
 
       <DeployDialog open={deployOpen} onClose={() => setDeployOpen(false)} applicationId={id} branch={a.repository?.branch ?? 'main'}
         onDeployed={(d) => navigate(`/applications/${id}/deployments/${d.id}`)} />
-      <AlertDialog open={confirm === 'stop'} tone="warning" title={`Stop ${a.name}?`} confirmLabel="Stop"
+      <AlertDialog open={confirm === 'stop'} tone="error" title={`Stop ${a.name}?`} confirmLabel="Stop"
         onCancel={() => setConfirm(null)}
         onConfirm={async () => { setConfirm(null); await doAction('stop', () => api.applications.stop(id), `${a.name} stopped`); }}>
-        The application stops serving traffic until it is started again. Its deployment is kept.
+        Are you sure you want to stop this application? It stops serving traffic until it is started again. Its deployment is kept.
       </AlertDialog>
       <AlertDialog open={confirm === 'rollback'} tone="warning" title="Roll back?" confirmLabel="Roll back"
         onCancel={() => setConfirm(null)}

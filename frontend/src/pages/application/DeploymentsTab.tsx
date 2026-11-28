@@ -17,6 +17,7 @@ export function DeploymentsTab({ detail }: { detail: ApplicationDetail }) {
   const { data, loading } = useDeployments(a.id, 200);
   const { run } = useAsyncAction();
   const [rollbackTo, setRollbackTo] = useState<Deployment | null>(null);
+  const [confirmStop, setConfirmStop] = useState(false);
   const currentId = a.currentDeployment?.id;
 
   const action = (d: Deployment, id: string) => {
@@ -24,7 +25,7 @@ export function DeploymentsTab({ detail }: { detail: ApplicationDetail }) {
     if (id === 'redeploy') run('redeploy', () => api.applications.redeploy(a.id, d.id), (r) => `Deployment #${r.number} queued`);
     if (id === 'rollback') setRollbackTo(d);
     if (id === 'cancel') run('cancel', () => api.applications.cancelDeployment(a.id, d.id), `Deployment #${d.number} cancelled`);
-    if (id === 'stop') run('stop', () => api.applications.stop(a.id), `${a.name} stopped`);
+    if (id === 'stop') setConfirmStop(true);
     if (id === 'restart') run('restart', () => api.applications.restart(a.id), `${a.name} restarted`);
   };
 
@@ -79,6 +80,11 @@ export function DeploymentsTab({ detail }: { detail: ApplicationDetail }) {
         onRowClick={(d) => navigate(`/applications/${a.id}/deployments/${d.id}`)}
         emptyState="No deployments yet. Use Deploy to start the first one."
       />
+      <AlertDialog open={confirmStop} tone="error" title={`Stop ${a.name}?`} confirmLabel="Stop"
+        onCancel={() => setConfirmStop(false)}
+        onConfirm={async () => { setConfirmStop(false); await run('stop', () => api.applications.stop(a.id), `${a.name} stopped`); }}>
+        Are you sure you want to stop this application? It stops serving traffic until it is started again. Its deployment is kept.
+      </AlertDialog>
       <AlertDialog open={!!rollbackTo} tone="warning" title={`Roll back to #${rollbackTo?.number}?`} confirmLabel="Roll back"
         onCancel={() => setRollbackTo(null)}
         onConfirm={async () => {
