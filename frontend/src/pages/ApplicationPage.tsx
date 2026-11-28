@@ -74,6 +74,7 @@ export function ApplicationPage() {
       breadcrumbs={[{ label: 'Applications', href: appHref('/applications'), onClick: (e) => { e.preventDefault(); navigate('/applications'); } }, { label: a.name }]}
       actions={
         <>
+          <Button variant="tertiary" onClick={() => navigate(`/applications/${id}/ide`)}>Open IDE</Button>
           <Button variant="primary" icon={<Icon name="upload" />} onClick={() => setDeployOpen(true)}>Deploy</Button>
           <Button icon={<Icon name="refresh" />} loading={busy === 'restart'} disabled={!current || stopped}
             onClick={() => doAction('restart', () => api.applications.restart(id), `${a.name} restarted`)}>Restart</Button>

@@ -1,6 +1,8 @@
 import type {
   ApplicationDetail, ApplicationMetrics, ApplicationSummary, AuditEvent, AuthStatus, DashboardData, Deployment,
   DetectionPreview, DetectionResult, Domain, EnvVar, LogLine, MetricSample, PlatformInfo, PlatformUpdateStatus, PlatformVersion, UpdateCheck, WebhookEvent, WebhookTestResult, WebhookView,
+  CommitInfo, WorkspaceBuildResult, WorkspaceCommitDiff, WorkspaceCommitFiles, WorkspaceDirectory,
+  WorkspaceFile, WorkspaceFileIndex, WorkspaceInfo, WorkspaceSearchResponse,
 } from './types';
 
 /** Error raised for non-2xx API responses; `message` carries the server's problem detail. */
@@ -57,6 +59,34 @@ const get = <T>(path: string) => request<T>('GET', path);
 const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {});
 const put = <T>(path: string, body: unknown) => request<T>('PUT', path, body);
 const del = <T>(path: string) => request<T>('DELETE', path);
+
+async function uploadRequest(path: string, file: File): Promise<void> {
+  if (!csrfToken() && !csrfPrimed) {
+    csrfPrimed = true;
+    await fetch('/api/auth/status', { credentials: 'same-origin' });
+  }
+  const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/octet-stream' };
+  const token = csrfToken();
+  if (token) headers['X-XSRF-TOKEN'] = token;
+  const res = await fetch(path, { method: 'POST', headers, credentials: 'same-origin', body: file });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`;
+    try { const problem = await res.json(); message = problem.detail || problem.message || message; } catch { /* not JSON */ }
+    throw new ApiError(res.status, message);
+  }
+}
+
+async function downloadRequest(path: string): Promise<Blob> {
+  const res = await fetch(path, { credentials: 'same-origin' });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`;
+    try { const problem = await res.json(); message = problem.detail || problem.message || message; } catch { /* not JSON */ }
+    throw new ApiError(res.status, message);
+  }
+  return res.blob();
+}
 
 export interface ServiceSettings {
   projectType?: string | null;
@@ -175,6 +205,33 @@ export const api = {
     regenerateWebhookSecret: (id: string) => post<{ secret: string }>(`${app(id)}/webhook/secret`),
     testWebhook: (id: string) => post<WebhookTestResult>(`${app(id)}/webhook/test`),
     activity: (id: string, limit = 50) => get<AuditEvent[]>(`${app(id)}/activity?limit=${limit}`),
+  },
+  workspace: {
+    info: (id: string) => get<WorkspaceInfo>(`${app(id)}/workspace`),
+    fetch: (id: string) => post<WorkspaceInfo>(`${app(id)}/workspace/fetch`),
+    history: (id: string, limit = 50) => get<CommitInfo[]>(`${app(id)}/workspace/history?limit=${limit}`),
+    commitFiles: (id: string, sha: string) => get<WorkspaceCommitFiles>(`${app(id)}/workspace/history/${encodeURIComponent(sha)}/files`),
+    commitDiff: (id: string, sha: string, path: string) => get<WorkspaceCommitDiff>(
+      `${app(id)}/workspace/history/${encodeURIComponent(sha)}/diff?path=${encodeURIComponent(path)}`),
+    files: (id: string, path = '') => get<WorkspaceDirectory>(`${app(id)}/workspace/files?path=${encodeURIComponent(path)}`),
+    allFiles: (id: string) => get<WorkspaceFileIndex>(`${app(id)}/workspace/all-files`),
+    read: (id: string, path: string) => get<WorkspaceFile>(`${app(id)}/workspace/file?path=${encodeURIComponent(path)}`),
+    createFile: (id: string, path: string) => post<void>(`${app(id)}/workspace/file`, { path }),
+    createDirectory: (id: string, path: string) => post<void>(`${app(id)}/workspace/directory`, { path }),
+    write: (id: string, path: string, content: string) => put<void>(`${app(id)}/workspace/file`, { path, content }),
+    rename: (id: string, path: string, name: string) => post<void>(`${app(id)}/workspace/rename`, { path, name }),
+    copy: (id: string, source: string, destination: string) => post<void>(`${app(id)}/workspace/copy`, { source, destination }),
+    move: (id: string, source: string, destination: string) => post<void>(`${app(id)}/workspace/move`, { source, destination }),
+    remove: (id: string, path: string) => del<void>(`${app(id)}/workspace/file?path=${encodeURIComponent(path)}`),
+    search: (id: string, query: string) => get<WorkspaceSearchResponse>(`${app(id)}/workspace/search?q=${encodeURIComponent(query)}`),
+    upload: (id: string, directory: string, file: File) => uploadRequest(
+      `${app(id)}/workspace/upload?directory=${encodeURIComponent(directory)}&name=${encodeURIComponent(file.name)}`, file),
+    download: (id: string, path: string) => downloadRequest(`${app(id)}/workspace/download?path=${encodeURIComponent(path)}`),
+    checkout: (id: string, branch: string) => post<WorkspaceInfo>(`${app(id)}/workspace/branch`, { branch }),
+    commit: (id: string, message: string) => post<WorkspaceInfo>(`${app(id)}/workspace/commit`, { message }),
+    push: (id: string) => post<WorkspaceInfo>(`${app(id)}/workspace/push`),
+    build: (id: string) => post<WorkspaceBuildResult>(`${app(id)}/workspace/build`),
+    deploy: (id: string, message?: string) => post<Deployment>(`${app(id)}/workspace/deploy`, { message }),
   },
 };
 

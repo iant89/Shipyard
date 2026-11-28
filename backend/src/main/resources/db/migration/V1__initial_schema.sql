@@ -78,7 +78,7 @@ CREATE TABLE deployments (
     commit_message  TEXT,
     commit_author   TEXT,
     branch          TEXT NOT NULL,
-    source          TEXT NOT NULL,       -- MANUAL | WEBHOOK | API | SCHEDULED | SYSTEM
+    source          TEXT NOT NULL,       -- MANUAL | WEBHOOK | API | IDE | SCHEDULED | SYSTEM
     status          TEXT NOT NULL,       -- see DeploymentStatus
     build_status    TEXT NOT NULL DEFAULT 'PENDING',
     runtime_status  TEXT NOT NULL DEFAULT 'PENDING',

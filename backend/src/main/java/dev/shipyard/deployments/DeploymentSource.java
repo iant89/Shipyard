@@ -1,3 +1,3 @@
 package dev.shipyard.deployments;
 
-public enum DeploymentSource { MANUAL, WEBHOOK, API, SCHEDULED, SYSTEM }
+public enum DeploymentSource { MANUAL, WEBHOOK, API, IDE, SCHEDULED, SYSTEM }

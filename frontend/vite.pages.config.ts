@@ -1,6 +1,9 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+const frontendRoot = fileURLToPath(new URL('.', import.meta.url));
 
 /**
  * GitHub Pages build: documentation at / and the interactive demo (the real
@@ -8,18 +11,33 @@ import react from '@vitejs/plugin-react';
  * make the output work under any repository path.
  */
 export default defineConfig({
-  root: resolve(__dirname, 'site'),
+  root: resolve(frontendRoot, 'site'),
   base: './',
-  publicDir: resolve(__dirname, 'public'),
+  publicDir: resolve(frontendRoot, 'public'),
   plugins: [react()],
+  resolve: {
+    alias: [
+      { find: '/src/site/', replacement: `${frontendRoot}/src/site/` },
+      { find: '/src/demo/', replacement: `${frontendRoot}/src/demo/` },
+    ],
+  },
+  server: {
+    host: '0.0.0.0',
+    allowedHosts: true,
+    fs: { allow: [frontendRoot] },
+  },
+  preview: {
+    host: '0.0.0.0',
+    allowedHosts: true,
+  },
   build: {
-    outDir: resolve(__dirname, 'dist-pages'),
+    outDir: resolve(frontendRoot, 'dist-pages'),
     emptyOutDir: true,
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
-        docs: resolve(__dirname, 'site/index.html'),
-        demo: resolve(__dirname, 'site/demo/index.html'),
+        docs: resolve(frontendRoot, 'site/index.html'),
+        demo: resolve(frontendRoot, 'site/demo/index.html'),
       },
     },
   },

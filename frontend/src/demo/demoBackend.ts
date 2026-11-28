@@ -11,6 +11,7 @@ import { appUrl, isLocalHostname } from '../services/format';
 import type {
   ApplicationDetail, ApplicationStatus, ApplicationSummary, AuditEvent, DetectionPreview, DetectionResult, Deployment, DeploymentSource,
   DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck, PlatformUpdateStatus, PlatformVersion,
+  WorkspaceBuildResult, WorkspaceChangedFile, WorkspaceDirectory, WorkspaceFile, WorkspaceFileIndex, WorkspaceInfo, WorkspaceSearchResponse,
 } from '../services/types';
 
 type Api = typeof realApi;
@@ -787,6 +788,112 @@ function wrap<T>(fn: () => T, ms?: number): Promise<T> {
 
 export function createDemoApi(): Api {
   seed();
+  const workspaceFiles = new Map<string, Map<string, string>>();
+  const workspaceFolders = new Map<string, Set<string>>();
+  const workspaceBaseline = new Map<string, Map<string, string>>();
+  const workspaceCommitDetails = new Map<string, { files: WorkspaceChangedFile[]; diffs: Map<string, string> }>();
+  const ensureWorkspace = (id: string) => {
+    const app = findApp(id);
+    let files = workspaceFiles.get(id);
+    if (!files) {
+      files = new Map([
+        ['README.md', `# ${app.name}\n\nEdit this sample workspace in the Shipyard IDE demo.\n`],
+        ['package.json', '{\n  "name": "demo-app",\n  "scripts": { "build": "vite build" }\n}\n'],
+        ['src/index.tsx', `export function App() {\n  return <main>Hello from ${app.name}</main>;\n}\n`],
+      ]);
+      workspaceFiles.set(id, files);
+      workspaceBaseline.set(id, new Map(files));
+      workspaceFolders.set(id, new Set(['src']));
+    }
+    return { app, files, folders: workspaceFolders.get(id)! };
+  };
+  const workspaceState = (id: string): WorkspaceInfo => {
+    const { app, files } = ensureWorkspace(id);
+    const baseline = workspaceBaseline.get(id)!;
+    const changes = [...new Set([...files.keys(), ...baseline.keys()])].flatMap((path) => {
+      if (!baseline.has(path)) return [`?? ${path}`];
+      if (!files.has(path)) return [` D ${path}`];
+      return baseline.get(path) === files.get(path) ? [] : [` M ${path}`];
+    });
+    return { branch: app.branch, branches: [...new Set([app.branch, 'main', 'develop'])], headSha: app.branchCommits[0]?.sha ?? sha(), changes };
+  };
+  const changedWorkspaceFiles = (before: Map<string, string>, after: Map<string, string>): WorkspaceChangedFile[] => {
+    const paths = [...new Set([...before.keys(), ...after.keys()])].sort((a, b) => a.localeCompare(b));
+    return paths.flatMap((path) => {
+      if (!before.has(path)) return [{ path, status: 'A' }];
+      if (!after.has(path)) return [{ path, status: 'D' }];
+      return before.get(path) === after.get(path) ? [] : [{ path, status: 'M' }];
+    });
+  };
+  const makeWorkspaceDiff = (path: string, before: string | undefined, after: string | undefined) => {
+    const lines = (content: string | undefined) => {
+      if (content === undefined || content === '') return [];
+      const result = content.split('\n');
+      if (content.endsWith('\n')) result.pop();
+      return result;
+    };
+    const oldLines = lines(before);
+    const newLines = lines(after);
+    return [
+      `diff --git a/${path} b/${path}`,
+      before === undefined ? 'new file mode 100644' : '',
+      before === undefined ? '--- /dev/null' : `--- a/${path}`,
+      after === undefined ? '+++ /dev/null' : `+++ b/${path}`,
+      `@@ -${oldLines.length ? 1 : 0},${oldLines.length} +${newLines.length ? 1 : 0},${newLines.length} @@`,
+      ...oldLines.map((line) => `-${line}`),
+      ...newLines.map((line) => `+${line}`),
+    ].filter(Boolean).join('\n');
+  };
+  const recordWorkspaceCommit = (id: string, message: string, author: string): CommitInfo | null => {
+    const { app, files } = ensureWorkspace(id);
+    const before = new Map(workspaceBaseline.get(id)!);
+    const changed = changedWorkspaceFiles(before, files);
+    if (!changed.length) return null;
+    const commit: CommitInfo = { sha: sha(), author, message, timestamp: iso(now()) };
+    const diffs = new Map(changed.map(({ path }) => [path, makeWorkspaceDiff(path, before.get(path), files.get(path))]));
+    workspaceCommitDetails.set(commit.sha, { files: changed, diffs });
+    workspaceBaseline.set(id, new Map(files));
+    app.branchCommits.unshift(commit);
+    return commit;
+  };
+  const fallbackHistoryPath = (id: string, commitSha: string): string | null => {
+    const { app, files } = ensureWorkspace(id);
+    const paths = [...files.keys()];
+    if (!paths.length) return null;
+    const index = Math.max(0, app.branchCommits.findIndex((commit) => commit.sha === commitSha));
+    return paths[index % paths.length] ?? paths[0];
+  };
+  const workspaceListing = (id: string, directory: string): WorkspaceDirectory => {
+    const { files, folders } = ensureWorkspace(id);
+    if (directory && !folders.has(directory)) throw new DemoError(404, 'Directory not found');
+    const prefix = directory ? `${directory}/` : '';
+    const entries = new Map<string, WorkspaceDirectory['entries'][number]>();
+    folders.forEach((path) => {
+      if (!path.startsWith(prefix) || path === directory) return;
+      const rest = path.slice(prefix.length);
+      if (rest && !rest.includes('/')) entries.set(rest, { name: rest, path, kind: 'DIRECTORY', size: 0 });
+    });
+    files.forEach((content, path) => {
+      if (!path.startsWith(prefix)) return;
+      const rest = path.slice(prefix.length);
+      if (!rest || rest.includes('/')) return;
+      entries.set(rest, { name: rest, path, kind: 'FILE', size: new TextEncoder().encode(content).length });
+    });
+    return { path: directory, entries: [...entries.values()].sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'DIRECTORY' ? -1 : 1)), truncated: false };
+  };
+  const ensureWorkspacePath = (id: string, path: string) => {
+    ensureWorkspace(id);
+    if (!path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.includes('\\') || path.split('/').some((part) =>
+      !part || part === '.' || part === '..' || part.toLowerCase() === '.git' || /[\u0000-\u001f\u007f-\u009f]/.test(part))) {
+      throw new DemoError(400, 'Use a safe project-relative path');
+    }
+  };
+  const workspaceParentExists = (id: string, path: string) => {
+    const { folders } = ensureWorkspace(id);
+    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    if (parent && !folders.has(parent)) throw new DemoError(400, 'Parent directory does not exist');
+    return parent;
+  };
   const appApi: Api['applications'] = {
     list: () => wrap(() => apps.map(summary)),
     get: (id) => wrap(() => detail(findApp(id))),
@@ -1078,6 +1185,164 @@ export function createDemoApi(): Api {
       return ['main', 'develop', 'feature/redesign'];
     }, 500),
     applications: appApi,
+    workspace: {
+      info: (id) => wrap(() => workspaceState(id)),
+      fetch: (id) => wrap(() => workspaceState(id)),
+      history: (id, limit = 50) => wrap(() => {
+        const { app } = ensureWorkspace(id);
+        return app.branchCommits.slice(0, Math.max(1, Math.min(limit, 100)));
+      }),
+      commitFiles: (id, commitSha) => wrap(() => {
+        const { app } = ensureWorkspace(id);
+        if (!app.branchCommits.some((commit) => commit.sha === commitSha)) throw new DemoError(404, 'Commit not found');
+        const details = workspaceCommitDetails.get(commitSha);
+        const path = details ? null : fallbackHistoryPath(id, commitSha);
+        return { files: details?.files ?? (path ? [{ path, status: 'M' }] : []), truncated: false };
+      }),
+      commitDiff: (id, commitSha, path) => wrap(() => {
+        const { app, files } = ensureWorkspace(id);
+        const commit = app.branchCommits.find((item) => item.sha === commitSha);
+        if (!commit) throw new DemoError(404, 'Commit not found');
+        const details = workspaceCommitDetails.get(commitSha);
+        const diff = details?.diffs.get(path) ?? (fallbackHistoryPath(id, commitSha) === path
+          ? makeWorkspaceDiff(path, `Previous version for ${commit.message}`, files.get(path))
+          : undefined);
+        if (diff === undefined) throw new DemoError(404, 'File is not part of this commit');
+        return { commitSha, path, diff, truncated: false };
+      }),
+      files: (id, path = '') => wrap(() => workspaceListing(id, path)),
+      allFiles: (id) => wrap(() => {
+        const { files } = ensureWorkspace(id);
+        const entries: WorkspaceFileIndex['entries'] = [...files].map(([path, content]) => ({
+          name: path.slice(path.lastIndexOf('/') + 1), path, kind: 'FILE' as const, size: new TextEncoder().encode(content).length,
+        })).sort((a, b) => a.path.localeCompare(b.path));
+        return { entries, truncated: false } satisfies WorkspaceFileIndex;
+      }),
+      read: (id, path) => wrap(() => {
+        const { files } = ensureWorkspace(id);
+        const content = files.get(path);
+        if (content === undefined) throw new DemoError(404, 'File not found');
+        return { path, content, size: new TextEncoder().encode(content).length } satisfies WorkspaceFile;
+      }),
+      createFile: (id, path) => wrap(() => {
+        ensureWorkspacePath(id, path);
+        const { files, folders } = ensureWorkspace(id);
+        workspaceParentExists(id, path);
+        if (files.has(path) || folders.has(path)) throw new DemoError(409, 'Path already exists');
+        files.set(path, '');
+      }),
+      createDirectory: (id, path) => wrap(() => {
+        ensureWorkspacePath(id, path);
+        const { files, folders } = ensureWorkspace(id);
+        workspaceParentExists(id, path);
+        if (files.has(path) || folders.has(path)) throw new DemoError(409, 'Path already exists');
+        folders.add(path);
+      }),
+      write: (id, path, content) => wrap(() => {
+        ensureWorkspacePath(id, path);
+        const { files } = ensureWorkspace(id);
+        if (!files.has(path)) throw new DemoError(404, 'File not found');
+        if (new TextEncoder().encode(content).length > 2 * 1024 * 1024 || content.includes('\0')) throw new DemoError(400, 'File content is not supported');
+        files.set(path, content);
+      }),
+      rename: (id, path, name) => wrap(() => {
+        const { files, folders } = ensureWorkspace(id);
+        const destination = `${path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''}${name}`;
+        ensureWorkspacePath(id, path);
+        ensureWorkspacePath(id, destination);
+        if (!files.has(path) && !folders.has(path)) throw new DemoError(404, 'Path not found');
+        if (files.has(destination) || folders.has(destination)) throw new DemoError(409, 'Path already exists');
+        const movedFiles = [...files].filter(([key]) => key === path || key.startsWith(`${path}/`));
+        const movedFolders = [...folders].filter((key) => key === path || key.startsWith(`${path}/`));
+        movedFiles.forEach(([key]) => files.delete(key));
+        movedFolders.forEach((key) => folders.delete(key));
+        movedFiles.forEach(([key, value]) => files.set(`${destination}${key.slice(path.length)}`, value));
+        movedFolders.forEach((key) => folders.add(`${destination}${key.slice(path.length)}`));
+      }),
+      copy: (id, source, destination) => wrap(() => {
+        ensureWorkspacePath(id, source);
+        ensureWorkspacePath(id, destination);
+        const { files, folders } = ensureWorkspace(id);
+        const copiedFiles = [...files].filter(([key]) => key === source || key.startsWith(`${source}/`));
+        const copiedFolders = [...folders].filter((key) => key === source || key.startsWith(`${source}/`));
+        if (!copiedFiles.length && !copiedFolders.length) throw new DemoError(404, 'Source not found');
+        if (files.has(destination) || folders.has(destination)) throw new DemoError(409, 'Path already exists');
+        if (folders.has(source) && destination.startsWith(`${source}/`)) throw new DemoError(400, 'A directory cannot be copied into itself');
+        workspaceParentExists(id, destination);
+        copiedFolders.forEach((key) => folders.add(`${destination}${key.slice(source.length)}`));
+        copiedFiles.forEach(([key, value]) => files.set(`${destination}${key.slice(source.length)}`, value));
+      }),
+      move: (id, source, destination) => wrap(() => {
+        ensureWorkspacePath(id, source);
+        ensureWorkspacePath(id, destination);
+        const { files, folders } = ensureWorkspace(id);
+        const movedFiles = [...files].filter(([key]) => key === source || key.startsWith(`${source}/`));
+        const movedFolders = [...folders].filter((key) => key === source || key.startsWith(`${source}/`));
+        if (!movedFiles.length && !movedFolders.length) throw new DemoError(404, 'Source not found');
+        if (files.has(destination) || folders.has(destination)) throw new DemoError(409, 'Path already exists');
+        if (folders.has(source) && destination.startsWith(`${source}/`)) throw new DemoError(400, 'A directory cannot be moved into itself');
+        workspaceParentExists(id, destination);
+        movedFiles.forEach(([key]) => files.delete(key));
+        movedFolders.forEach((key) => folders.delete(key));
+        movedFolders.forEach((key) => folders.add(`${destination}${key.slice(source.length)}`));
+        movedFiles.forEach(([key, value]) => files.set(`${destination}${key.slice(source.length)}`, value));
+      }),
+      remove: (id, path) => wrap(() => {
+        ensureWorkspacePath(id, path);
+        const { files, folders } = ensureWorkspace(id);
+        if (!files.has(path) && !folders.has(path)) throw new DemoError(404, 'Path not found');
+        [...files.keys()].filter((key) => key === path || key.startsWith(`${path}/`)).forEach((key) => files.delete(key));
+        [...folders].filter((key) => key === path || key.startsWith(`${path}/`)).forEach((key) => folders.delete(key));
+      }),
+      search: (id, query) => wrap(() => {
+        const { files } = ensureWorkspace(id);
+        const needle = query.toLowerCase();
+        const matches: WorkspaceSearchResponse['matches'] = [];
+        files.forEach((content, path) => {
+          if (path.toLowerCase().includes(needle)) matches.push({ path, lineNumber: 0, preview: 'File name matches' });
+          content.split('\n').forEach((line, index) => {
+            if (line.toLowerCase().includes(needle) && matches.length < 200) matches.push({ path, lineNumber: index + 1, preview: line.slice(0, 240) });
+          });
+        });
+        return { matches: matches.slice(0, 200), truncated: matches.length > 200 } satisfies WorkspaceSearchResponse;
+      }),
+      upload: (id, directory, file) => {
+        if (file.size > 25 * 1024 * 1024) return Promise.reject(new DemoError(400, 'Upload is too large (max 25 MiB)'));
+        return file.text().then((content) => wrap(() => {
+          const { files, folders } = ensureWorkspace(id);
+          if (directory && !folders.has(directory)) throw new DemoError(400, 'Upload destination is not a directory');
+          const path = directory ? `${directory}/${file.name}` : file.name;
+          ensureWorkspacePath(id, path);
+          if (files.has(path) || folders.has(path)) throw new DemoError(409, 'Path already exists');
+          files.set(path, content);
+        }));
+      },
+      download: (id, path) => wrap(() => {
+        const content = ensureWorkspace(id).files.get(path);
+        if (content === undefined) throw new DemoError(404, 'File not found');
+        return new Blob([content], { type: 'application/octet-stream' });
+      }),
+      checkout: (id, branch) => wrap(() => { findApp(id).branch = branch; return workspaceState(id); }),
+      commit: (id, message) => wrap(() => {
+        const cleanMessage = message?.trim();
+        if (!cleanMessage) throw new DemoError(400, 'Commit message is required');
+        if (cleanMessage.length > 500) throw new DemoError(400, 'Commit message is too long');
+        recordWorkspaceCommit(id, cleanMessage, 'demo');
+        return workspaceState(id);
+      }),
+      push: (id) => wrap(() => workspaceState(id)),
+      build: (id) => wrap((): WorkspaceBuildResult => {
+        findApp(id);
+        return { success: true, framework: 'Demo project', projectType: 'STATIC', output: ['Build completed successfully (simulated demo).'], error: null, durationMs: 850 };
+      }, 900),
+      deploy: (id, message) => wrap(() => {
+        const { app } = ensureWorkspace(id);
+        const cleanMessage = message?.trim() || 'Deploy from IDE';
+        recordWorkspaceCommit(id, cleanMessage, 'Shipyard IDE');
+        const commitSha = app.branchCommits[0]?.sha;
+        return requestDeployment(app, 'IDE', commitSha, cleanMessage, 'Shipyard IDE');
+      }, 500),
+    },
   };
 }
 
