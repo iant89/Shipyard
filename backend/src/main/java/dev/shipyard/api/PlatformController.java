@@ -71,8 +71,7 @@ public class PlatformController {
         List<Application> apps = applications.findAll();
         Map<ApplicationStatus, Integer> counts = new EnumMap<>(ApplicationStatus.class);
         for (Application a : apps) counts.merge(a.status(), 1, Integer::sum);
-        int deploying = count(counts, ApplicationStatus.DEPLOYING) + count(counts, ApplicationStatus.BUILDING)
-                + count(counts, ApplicationStatus.STARTING) + count(counts, ApplicationStatus.ROLLING_BACK);
+        int deploying = (int) apps.stream().filter(a -> a.status().isUpdating()).count();
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("applications", apps.size());
         m.put("running", count(counts, ApplicationStatus.RUNNING));

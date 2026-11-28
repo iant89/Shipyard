@@ -138,6 +138,10 @@ public class CaddyManager {
                 if (hosts.stream().noneMatch(x -> x.hostname().equals(h))) hosts.add(new CaddyRoute.Host(h, https));
             }
             if (hosts.isEmpty()) continue;
+            if (app.status().isUpdating()) {
+                routes.add(CaddyRoute.maintenance(app.slug(), hosts));
+                continue;
+            }
             Deployment current = app.currentDeploymentId() == null ? null : deployments.findById(app.currentDeploymentId()).orElse(null);
             if (current == null) {
                 routes.add(new CaddyRoute(app.slug(), hosts, null, null, "Application has not been deployed yet"));
@@ -153,16 +157,17 @@ public class CaddyManager {
                 routes);
     }
 
-    /** .local hostnames of running applications (deployed, not stopped) are published with mDNS; the rest withdrawn. */
+    /** .local hostnames of running or updating applications are published with mDNS; the rest withdrawn. */
     private void syncMdns() {
         try {
-            List<String> running = new ArrayList<>();
+            List<String> published = new ArrayList<>();
             for (Application app : applications.findAll()) {
-                if (app.currentDeploymentId() == null || app.status() == ApplicationStatus.STOPPED) continue;
-                for (Domain d : domains.findByApplication(app.id())) running.add(d.hostname());
-                if (props.baseDomain() != null && !props.baseDomain().isBlank()) running.add(app.slug() + "." + props.baseDomain().strip());
+                if (app.status() == ApplicationStatus.STOPPED
+                        || (app.currentDeploymentId() == null && !app.status().isUpdating())) continue;
+                for (Domain d : domains.findByApplication(app.id())) published.add(d.hostname());
+                if (props.baseDomain() != null && !props.baseDomain().isBlank()) published.add(app.slug() + "." + props.baseDomain().strip());
             }
-            mdns.sync(running);
+            mdns.sync(published);
         } catch (RuntimeException e) {
             log.warn("Could not update the mDNS hostnames", e);
         }

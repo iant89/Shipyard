@@ -120,6 +120,7 @@ public class DeploymentPipeline {
             if (app.currentDeploymentId() == null) applications.updateStatus(app.id(), ApplicationStatus.BUILDING);
             else applications.updateStatus(app.id(), ApplicationStatus.DEPLOYING);
             appChanged(app.id());
+            reloadRoutes(out, "Application URL is showing the update screen");
 
             // CLONING — fetch and pin the exact commit
             transition(d, DeploymentStatus.CLONING);
@@ -213,6 +214,7 @@ public class DeploymentPipeline {
         out.info("Rolling back to deployment #" + target.number());
         applications.updateStatus(app.id(), ApplicationStatus.ROLLING_BACK);
         appChanged(app.id());
+        reloadRoutes(out, "Application URL is showing the update screen");
         try {
             if (target.isStatic()) {
                 if (target.artifactPath() == null || !Files.isDirectory(Path.of(target.artifactPath()))) {
@@ -248,6 +250,7 @@ public class DeploymentPipeline {
             // The target keeps its previous terminal status; the current deployment is untouched.
             deployments.updateStatus(target.id(), target.status());
             applications.updateStatus(app.id(), restoredStatus(app.id(), statusBefore));
+            reloadRoutes(out, "Previous application state restored in Caddy");
             appChanged(app.id());
             return e instanceof CancellationToken.CancelledException ? "CANCELLED" : "FAILED";
         }
@@ -341,6 +344,7 @@ public class DeploymentPipeline {
         }
         events.publish(EventTypes.DEPLOYMENT_STATUS, app.id(), d.id(), Map.of("status", status.name()));
         webhookEvents.updateByDeployment(d.id(), "FAILED", error);
+        reloadRoutes(out, "Previous application state restored in Caddy");
         appChanged(app.id());
     }
 
@@ -362,6 +366,16 @@ public class DeploymentPipeline {
                 applications.updateStatus(app.id(), ApplicationStatus.STARTING);
                 appChanged(app.id());
             }
+        }
+    }
+
+    private void reloadRoutes(DeploymentLogger out, String successMessage) {
+        try {
+            var reload = caddy.reload();
+            out.info(reload.applied() ? successMessage : "Caddy: " + reload.message());
+        } catch (RuntimeException e) {
+            log.warn("Could not update Caddy routes", e);
+            out.warn("Could not update Caddy routes: " + e.getMessage());
         }
     }
 
