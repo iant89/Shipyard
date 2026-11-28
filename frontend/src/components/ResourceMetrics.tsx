@@ -36,7 +36,7 @@ export function ResourceMetrics({ latest, history, cpuLimit, memoryLimitMb, host
         sparkline={cpu.length > 1 ? cpu : undefined}
       />
       <MetricCard
-        title="Memory"
+        title="Memory used"
         loading={loading}
         value={latest ? formatBytes(latest.memoryBytes) : '–'}
         subtitle={memLimit ? `of ${formatBytes(memLimit)}${memPct != null ? ` · ${memPct.toFixed(0)}%` : ''}` : undefined}
