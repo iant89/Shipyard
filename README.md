@@ -151,7 +151,10 @@ working directory carries over between commands, so `cd` works; each command may
 for 60 seconds and returns up to 256 KB of output. It is not a TTY, so interactive
 programs (vi, less, top) don't work. Secret environment values are masked in the
 output like in the logs, and every command is recorded in Activity. Images without
-`/bin/sh` (distroless, scratch) can't use it.
+`/bin/sh` (distroless, scratch) can't use it. Output keeps its ANSI colors; ↑/↓ recall
+earlier commands, Ctrl+C stops waiting for a command (it still runs until it finishes
+or reaches the 60-second limit), and Ctrl+L or `clear` clears the screen. The
+transcript can be copied or downloaded.
 
 ### Application network
 
