@@ -3,7 +3,7 @@ import { AlertDialog, Badge, Button, Dialog, Form, Icon, IconButton, Input, Link
 import { api } from '../../services/api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import type { ApplicationDetail, Domain } from '../../services/types';
-import { appUrl, formatDateTime, isLocalHostname } from '../../services/format';
+import { appUrl, formatDateTime, isLocalHostname, localHostnameHelp } from '../../services/format';
 import { useResource } from '../../hooks/useResource';
 
 /** Domain management (spec section 28). Caddy obtains certificates automatically for TLS domains. */
@@ -64,6 +64,12 @@ export function DomainsTab({ detail, onChange }: { detail: ApplicationDetail; on
           and per-domain HTTPS switches are ignored.
         </MessageStrip>
       )}
+      {info?.mdns?.enabled && !info.mdns.running && detail.domains.some((d) => d.hostname.endsWith('.local')) && (
+        <MessageStrip tone="warning" title="The mDNS responder is not running">
+          .local hostnames are not published on your network. On the server, check <code className="sy-mono">docker compose ps mdns</code> and{' '}
+          <code className="sy-mono">docker compose logs mdns</code>.
+        </MessageStrip>
+      )}
       <Table caption="Domains" columns={columns} data={detail.domains} getRowId={(d) => d.id} density="compact" responsive="stack" emptyState="No domains. Add one to make the application reachable." />
       <div><Button variant="primary" icon={<Icon name="add" />} onClick={() => setAdding(true)}>Add domain</Button></div>
 
@@ -71,7 +77,7 @@ export function DomainsTab({ detail, onChange }: { detail: ApplicationDetail; on
         footer={<><Button onClick={() => setAdding(false)}>Cancel</Button><Button variant="primary" type="submit" form="domain-form" loading={busy === 'add'}>Add</Button></>}>
         <Form id="domain-form" onSubmit={add} aria-label="Add domain">
           <Input label="Hostname" required value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="www.example.com" autoFocus
-            description={preview ? `Local hostname: served at ${preview}` : undefined} />
+            description={preview ? localHostnameHelp(preview, hostname.trim().toLowerCase(), !!info?.mdns?.enabled) : undefined} />
           <Switch label="HTTPS (automatic certificate)" checked={tls && httpsEnabled} disabled={!httpsEnabled} onChange={setTlsChoice} />
         </Form>
       </Dialog>

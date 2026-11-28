@@ -286,11 +286,12 @@ chmod 600 .env
 
 # ---------------------------------------------------------------- firewall
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-  allowed="${HOST_PORT:-80}/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp"
-  if [[ $HTTPS -eq 1 ]]; then allowed="${HOST_PORT:-80}/tcp, 443/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp"; fi
+  allowed="${HOST_PORT:-80}/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp, 5353/udp"
+  if [[ $HTTPS -eq 1 ]]; then allowed="${HOST_PORT:-80}/tcp, 443/tcp, ${HTTP_PORT:-${ui_port_default}}/tcp, 5353/udp"; fi
   log "ufw is active — allowing $allowed"
   ufw allow "${HOST_PORT:-80}/tcp" >/dev/null
   if [[ $HTTPS -eq 1 ]]; then ufw allow 443/tcp >/dev/null; fi
+  ufw allow 5353/udp >/dev/null   # mDNS: publishes applications' .local hostnames
   ufw allow "${HTTP_PORT:-${ui_port_default}}/tcp" >/dev/null
 fi
 

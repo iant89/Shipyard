@@ -57,6 +57,7 @@ shipyard:
   initial-admin-password: ${SHIPYARD_ADMIN_PASSWORD:}
   source-dir: ${SHIPYARD_SOURCE_DIR:/opt/shipyard/source}
   http-port: ${SHIPYARD_HTTP_PORT:}
+  mdns: ${SHIPYARD_MDNS:true}
 
 logging:
   level:

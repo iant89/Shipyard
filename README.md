@@ -69,6 +69,15 @@ deploys new commits. A commit is tried once, so a failing commit is not rebuilt
 over and over; the next push is picked up as usual. A stopped application is left
 stopped.
 
+`.local` hostnames (`devstick.local`, …) of running applications are published
+on your network with mDNS, so any computer on the LAN resolves them to this
+server with no DNS setup (macOS and iOS natively, Windows 10+, Linux with
+`avahi`/`systemd-resolved`). A name is announced when its application starts and
+withdrawn when it is stopped or deleted. The `mdns` compose service answers; it
+runs on the host network and shares UDP port 5353 with `avahi-daemon` if the
+server runs one. Other local names (`.lan`, `.home`, …) are not mDNS names; point
+them at the server in your router's DNS. Turn it off with `SHIPYARD_MDNS=false`.
+
 Point each domain's DNS at the server. Caddy obtains and renews certificates
 automatically; switch HTTPS off for a single LAN-only name, or set
 `SHIPYARD_HTTPS=false` to serve the whole platform over plain HTTP (no
@@ -136,6 +145,8 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 | `SHIPYARD_CRASH_RESTART_THRESHOLD` | `5` | Restarts before an app is marked CRASHED |
 | `SHIPYARD_ADMIN_USERNAME` / `_PASSWORD` | – | Create the first admin non-interactively |
 | `SHIPYARD_ALLOW_LOCAL_REPOSITORIES` | `false` | Allow `file://` repositories (development) |
+| `SHIPYARD_MDNS` | `true` | Publish `.local` hostnames of running applications on the LAN with mDNS (see below) |
+| `SHIPYARD_MDNS_ADDRESS` | – | Address mDNS answers with (default: the server's address on the asking client's network) |
 | `SHIPYARD_HTTP_PORT` | detected | Host port Caddy's HTTP listener is published on. Local hostnames (`devstick.local`, `localhost`, `.lan`, IPs…) get it in their URLs when it isn't 80. Read from the Caddy container when unset |
 
 ### Backup

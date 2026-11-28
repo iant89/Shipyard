@@ -8,6 +8,7 @@ import dev.shipyard.deployments.Deployment;
 import dev.shipyard.deployments.DeploymentRepository;
 import dev.shipyard.domains.Domain;
 import dev.shipyard.domains.DomainRepository;
+import dev.shipyard.mdns.MdnsHostnames;
 import dev.shipyard.storage.StorageLayout;
 import java.io.IOException;
 import java.net.URI;
@@ -47,9 +48,11 @@ public class CaddyManager {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
             .proxy(java.net.ProxySelector.of(null)).build();
     private volatile String lastStatus = "Not applied yet";
+    private final MdnsHostnames mdns;
 
     public CaddyManager(PlatformProperties props, StorageLayout layout, @Lazy ApplicationRepository applications,
-                        @Lazy DeploymentRepository deployments, @Lazy DomainRepository domains) {
+                        @Lazy DeploymentRepository deployments, @Lazy DomainRepository domains, MdnsHostnames mdns) {
+        this.mdns = mdns;
         this.props = props;
         this.layout = layout;
         this.applications = applications;
@@ -82,6 +85,7 @@ public class CaddyManager {
 
     public synchronized ReloadResult reload() {
         String config = render();
+        syncMdns();
         Path file = layout.caddyDir().resolve("Caddyfile");
         try {
             Files.writeString(file, config);
@@ -147,6 +151,21 @@ public class CaddyManager {
         }
         return CaddyConfigGenerator.generate(adminDirective(), https, props.acmeEmail(), props.platformDomain(), props.platformUpstream(),
                 routes);
+    }
+
+    /** .local hostnames of running applications (deployed, not stopped) are published with mDNS; the rest withdrawn. */
+    private void syncMdns() {
+        try {
+            List<String> running = new ArrayList<>();
+            for (Application app : applications.findAll()) {
+                if (app.currentDeploymentId() == null || app.status() == ApplicationStatus.STOPPED) continue;
+                for (Domain d : domains.findByApplication(app.id())) running.add(d.hostname());
+                if (props.baseDomain() != null && !props.baseDomain().isBlank()) running.add(app.slug() + "." + props.baseDomain().strip());
+            }
+            mdns.sync(running);
+        } catch (RuntimeException e) {
+            log.warn("Could not update the mDNS hostnames", e);
+        }
     }
 
     /** The admin directive must keep Caddy listening where the platform will reach it next time. */

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -86,6 +87,7 @@ class PlatformIntegrationTest {
         r.add("shipyard.data-dir", () -> dataDir.toString());
         r.add("shipyard.auto-update-interval-seconds", () -> "2");
         r.add("shipyard.http-port", () -> "8081");
+
         r.add("shipyard.allow-local-repositories", () -> "true");
         r.add("shipyard.public-url", () -> "https://platform.example.com");
     }
@@ -369,6 +371,34 @@ class PlatformIntegrationTest {
         urls.forEach(u -> list.add(u.asText()));
         assertThat(list).contains("http://devstick.local:8081", "http://site.example.com");
         mvc.perform(get("/api/platform/info").session(session)).andExpect(jsonPath("$.httpPort").value(8081));
+    }
+
+    @Test
+    @Order(12)
+    void publishesRunningApplicationsLocalNamesWithMdns() throws Exception {
+        // Running (#5) with devstick.local from the previous test; site.example.com is not a .local name.
+        awaitMdns("devstick.local\n");
+        mvc.perform(post("/api/applications/" + appId + "/stop").session(session).with(csrf())).andExpect(status().isAccepted());
+        awaitMdns("");
+        mvc.perform(post("/api/applications/" + appId + "/start").session(session).with(csrf())).andExpect(status().isAccepted());
+        awaitMdns("devstick.local\n");
+        mvc.perform(delete("/api/applications/" + appId).session(session).with(csrf())).andExpect(status().isNoContent());
+        awaitMdns("");
+        // No responder heartbeat in this test: reported as enabled but not running.
+        mvc.perform(get("/api/platform/info").session(session))
+                .andExpect(jsonPath("$.mdns.enabled").value(true)).andExpect(jsonPath("$.mdns.running").value(false));
+    }
+
+    private void awaitMdns(String expected) throws Exception {
+        Path file = dataDir.resolve("mdns").resolve("hostnames");
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        String last = null;
+        while (System.nanoTime() < deadline) {
+            last = Files.isRegularFile(file) ? Files.readString(file) : "";
+            if (last.equals(expected)) return;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("mDNS hostnames: expected '" + expected + "', got '" + last + "'");
     }
 
     private List<Integer> deploymentNumbers() throws Exception {

@@ -70,3 +70,11 @@ export function appUrl(hostname: string, tls: boolean, httpPort?: number | null)
   if (tls) return `https://${hostname}`;
   return `http://${hostname}${httpPort && httpPort !== 80 && isLocalHostname(hostname) ? `:${httpPort}` : ''}`;
 }
+
+/** Help text for a local hostname: where it is served and how it resolves. */
+export function localHostnameHelp(url: string, hostname: string, mdnsEnabled: boolean): string {
+  if (mdnsEnabled && hostname.endsWith('.local')) {
+    return `Local hostname: served at ${url}. Published on your network with mDNS while the application runs, so other computers find it with no DNS setup.`;
+  }
+  return `Local hostname: served at ${url}. Make sure ${hostname} resolves to this server (router DNS or a hosts file)${mdnsEnabled ? '; only .local names are published with mDNS' : ''}.`;
+}

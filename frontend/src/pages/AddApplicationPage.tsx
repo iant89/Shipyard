@@ -6,7 +6,7 @@ import {
 } from '@enterprise-ui/react';
 import { api, errorMessage, type ServiceSettings } from '../services/api';
 import type { DetectionPreview } from '../services/types';
-import { appUrl, humanize, isLocalHostname, shortSha } from '../services/format';
+import { appUrl, humanize, isLocalHostname, localHostnameHelp, shortSha } from '../services/format';
 import { useResource } from '../hooks/useResource';
 import { appHref } from '../app/platformMode';
 
@@ -261,7 +261,7 @@ export function AddApplicationPage() {
                 <FormGroup columns={2} title="Routing">
                   <Input label="Domain" value={d.domain} onChange={(e) => set('domain', e.target.value)} placeholder="myapp.example.com"
                     description={host && isLocalHostname(host)
-                      ? `Local hostname: served at ${domainUrl}. Make sure ${host} resolves to this server (mDNS, router DNS or a hosts file).`
+                      ? localHostnameHelp(domainUrl!, host, !!platform?.mdns?.enabled)
                       : 'Point DNS at this server; Caddy obtains the TLS certificate automatically. More domains can be added later.'} />
                 </FormGroup>
                 <FormGroup columns={2} title="Automation">

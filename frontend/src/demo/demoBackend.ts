@@ -1045,7 +1045,7 @@ export function createDemoApi(): Api {
       info: () => wrap(() => ({
         name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard',
         publicUrl: 'https://shipyard.example.com', https: true, platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
-        httpPort: DEMO_HTTP_PORT, caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
+        httpPort: DEMO_HTTP_PORT, mdns: { enabled: true, running: true, addresses: ['eth0 192.168.1.20'] }, caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
       })),
       caddy: () => wrap(() => ({ config: caddyfile(), status: `Applied at ${iso(now() - 4 * MIN)}` })),
       metrics: () => wrap(() => ({ latest: hostHistory[hostHistory.length - 1], history: hostHistory })),

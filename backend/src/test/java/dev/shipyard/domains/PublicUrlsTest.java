@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class PublicUrlsTest {
     private static PublicUrls withPort(Integer port) {
         return new PublicUrls(new PlatformProperties(null, null, null, null, null, null, null, null, false, null, null, 0, 0, 0,
-                false, null, null, null, port));
+                false, null, null, null, port, false));
     }
 
     @Test

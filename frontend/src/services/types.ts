@@ -253,6 +253,8 @@ export interface PlatformInfo {
   https: boolean;
   /** Host port Caddy's HTTP listener is published on; local hostnames' URLs include it when not 80. */
   httpPort: number;
+  /** .local hostnames of running applications are published with mDNS; running = the responder's heartbeat is fresh. */
+  mdns: { enabled: boolean; running: boolean; addresses: string[] };
   platformDomain: string | null;
   baseDomain: string | null;
   dataDir: string;

@@ -44,7 +44,9 @@ public record PlatformProperties(
         /** Shipyard's own git checkout (mounted read-only by docker compose), used for self-update. */
         String sourceDir,
         /** Host port Caddy's HTTP listener is published on, for local hostnames' URLs. Detected from the Caddy container when unset. */
-        Integer httpPort
+        Integer httpPort,
+        /** Publish the .local hostnames of running applications with mDNS (the compose mdns service answers). */
+        boolean mdns
 ) {
     public PlatformProperties {
         if (dataDir == null || dataDir.isBlank()) dataDir = "/var/lib/shipyard";
