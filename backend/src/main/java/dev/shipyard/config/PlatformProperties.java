@@ -40,7 +40,9 @@ public record PlatformProperties(
         boolean allowLocalRepositories,
         /** Initial admin credentials for first boot (optional). */
         String initialAdminUsername,
-        String initialAdminPassword
+        String initialAdminPassword,
+        /** Shipyard's own git checkout (mounted read-only by docker compose), used for self-update. */
+        String sourceDir
 ) {
     public PlatformProperties {
         if (dataDir == null || dataDir.isBlank()) dataDir = "/var/lib/shipyard";
@@ -55,6 +57,7 @@ public record PlatformProperties(
         if (workerThreads <= 0) workerThreads = 2;
         if (retainDeployments <= 0) retainDeployments = 10;
         if (crashRestartThreshold <= 0) crashRestartThreshold = 5;
+        if (sourceDir == null || sourceDir.isBlank()) sourceDir = "/opt/shipyard/source";
     }
 
     public String publicUrlNoSlash() {

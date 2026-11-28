@@ -10,7 +10,11 @@ name: shipyard
 
 services:
   shipyard:
-    build: .
+    build:
+      context: .
+      args:
+        # Shown in Settings → Shipyard updates; scripts/self-update.sh sets it.
+        SHIPYARD_COMMIT: ${SHIPYARD_COMMIT:-}
     image: shipyard:latest
     restart: unless-stopped
     env_file: .env
@@ -25,6 +29,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${SHIPYARD_HOST_DATA:-/var/lib/shipyard}:/var/lib/shipyard
       - caddy-admin:/run/caddy-admin
+      # This checkout, read-only: lets Shipyard check for and apply its own updates.
+      - .:/opt/shipyard/source:ro
     ports:
       # Direct access to the UI on the LAN (optional when SHIPYARD_PLATFORM_DOMAIN is set).
       - "${SHIPYARD_UI_PORT:-8080}:8080"

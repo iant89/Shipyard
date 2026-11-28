@@ -50,6 +50,8 @@ public class SecurityConfig {
                 // Webhooks authenticate with HMAC signatures, not sessions.
                 .requestMatchers("/api/webhooks/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                // Self-update progress survives the restart, which signs everyone out; the log needs a session.
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/platform/update/status").permitAll()
                 .requestMatchers("/api/**").hasRole("ADMINISTRATOR")
                 .anyRequest().permitAll())
             .csrf(csrf -> csrf

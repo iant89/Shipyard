@@ -329,7 +329,7 @@ if [[ $START -eq 1 ]]; then
     log "Removing stale generated Caddyfile (HTTPS disabled)"
     rm -f "${host_data}/caddy/Caddyfile"
   fi
-  docker compose up -d --build --force-recreate
+  SHIPYARD_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)" docker compose up -d --build --force-recreate
 
   log "Waiting for the API to become healthy..."
   healthy=0

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AppShell, ApplicationHeader, Icon, List, NavigationGroup, NavigationItem, SideNavigation, StatusIndicator } from '@enterprise-ui/react';
+import { AppShell, ApplicationHeader, Button, Icon, List, NavigationGroup, NavigationItem, SideNavigation, StatusIndicator } from '@enterprise-ui/react';
 import { useSession } from '../state/session';
 import { usePreferences } from '../state/preferences';
 import { useApplications } from '../hooks/useApplications';
 import { onConnectionChange, subscribe } from '../services/events';
-import type { PlatformEvent } from '../services/types';
+import type { PlatformEvent, PlatformVersion } from '../services/types';
+import { api } from '../services/api';
+import { UPDATE_CHANGED_EVENT } from '../components/PlatformUpdateProgress';
 import { formatTime } from '../services/format';
 import { appHref, platformMode } from '../app/platformMode';
 
@@ -46,6 +48,18 @@ export function PlatformShell({ children }: { children: ReactNode }) {
   const names = useMemo(() => Object.fromEntries((apps.data ?? []).map((a) => [a.id, a.name])), [apps.data]);
   const running = (apps.data ?? []).filter((a) => a.status === 'RUNNING').length;
   const failed = (apps.data ?? []).filter((a) => a.status === 'FAILED' || a.status === 'CRASHED').length;
+
+  // Shipyard's own updates: checked on load and every 30 minutes (the server caches the fetch).
+  const [platformVersion, setPlatformVersion] = useState<PlatformVersion | null>(null);
+  useEffect(() => {
+    const load = () => api.platform.version().then(setPlatformVersion).catch(() => { /* optional */ });
+    load();
+    const t = window.setInterval(load, 30 * 60_000);
+    window.addEventListener(UPDATE_CHANGED_EVENT, load);
+    return () => { window.clearInterval(t); window.removeEventListener(UPDATE_CHANGED_EVENT, load); };
+  }, [location.pathname === '/settings']); // eslint-disable-line react-hooks/exhaustive-deps
+  const updating = platformVersion?.update?.state === 'RUNNING';
+  const updates = platformVersion?.check?.status === 'BEHIND' ? platformVersion.check.behind : 0;
 
   useEffect(() => onConnectionChange(setConnected), []);
   useEffect(
@@ -93,6 +107,16 @@ export function PlatformShell({ children }: { children: ReactNode }) {
                 </StatusIndicator>
               ),
             },
+            ...(updating || updates ? [{
+              id: 'shipyard-update',
+              priority: 2,
+              content: (
+                <Button size="sm" variant="tertiary" icon={<Icon name="download" />} onClick={() => navigate('/settings#updates')}
+                  aria-label={updating ? 'Shipyard is updating' : `Shipyard update available (${updates} new commit${updates === 1 ? '' : 's'})`}>
+                  {updating ? 'Updating…' : 'Update available'}
+                </Button>
+              ),
+            }] : []),
           ]}
           notificationCount={unread}
           onNotificationsClick={() => setNotices((cur) => cur.map((n) => ({ ...n, read: true })))}

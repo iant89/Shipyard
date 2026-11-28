@@ -137,6 +137,35 @@ Back up the data directory. The essential files are
 `database/shipyard.db` (SQLite) and `database/secret.key` (encrypts environment
 variables, webhook secrets and access tokens — without it they cannot be read).
 
+### Updating Shipyard
+
+Shipyard follows the branch it was installed from (normally `main`). It checks
+that branch for newer commits; when there are some, the header shows **Update
+available** and *Settings → Shipyard updates* lists them. Pick a commit (the newest
+is preselected) and click **Update**. Nothing updates on its own.
+
+The update runs in a short-lived `shipyard-updater` container, using
+[`scripts/self-update.sh`](scripts/self-update.sh) in your checkout:
+
+1. Fast-forwards the checkout to the chosen commit. Local edits, such as ports set by
+   the installer, are kept. If they conflict with the update, it stops and changes nothing.
+2. Builds the new image while the current version keeps running. If the build fails,
+   nothing is restarted.
+3. Stops Shipyard, backs up `database/` to `platform-update/backup/` in the data
+   directory, and starts the new version.
+4. If the new version is not healthy within 5 minutes, restores the previous image,
+   database and checkout.
+
+Your applications keep running throughout. The Shipyard UI is unavailable for a
+minute or two and you sign in again afterwards; the result and log are on the
+same Settings card. Updating is refused while deployments are queued or running.
+
+You can also update from the server: `scripts/self-update.sh [commit]` in the
+Shipyard directory (defaults to the latest commit).
+
+Installs from before self-update need one manual update to get it:
+`git pull && SHIPYARD_COMMIT=$(git rev-parse HEAD) docker compose up -d --build`.
+
 ## Security model
 
 - Builds and applications run only in containers, with memory, CPU and PID limits.
@@ -160,6 +189,7 @@ variables, webhook secrets and access tokens — without it they cannot be read)
 scripts/dev.sh                 # API on :8080, UI on http://localhost:5173
 cd backend && mvn test         # unit + end-to-end API tests
 cd frontend && npm run build   # type-check and build the UI
+scripts/test-self-update.sh    # self-update scenarios against a fake docker CLI
 ```
 
 The GitHub Pages site (`frontend/site/`) is the documentation page plus the same UI at `/demo/`

@@ -51,6 +51,9 @@ import org.springframework.test.web.servlet.MvcResult;
 class PlatformIntegrationTest {
     static Path dataDir;
     static Path repo;
+    /** A stand-in for Shipyard's own repository, and the install checkout two commits behind it. */
+    static Path shipyardOrigin;
+    static Path shipyardCheckout;
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
@@ -69,6 +72,17 @@ class PlatformIntegrationTest {
         Files.writeString(repo.resolve("index.html"), "<h1>v1</h1>");
         git("add", ".");
         git("commit", "-q", "-m", "first");
+        shipyardOrigin = Files.createTempDirectory("shipyard-origin");
+        run(shipyardOrigin, "git", "init", "-q", "-b", "main");
+        for (String m : List.of("v1", "v2", "v3")) {
+            Files.writeString(shipyardOrigin.resolve("VERSION"), m);
+            run(shipyardOrigin, "git", "add", ".");
+            run(shipyardOrigin, "git", "-c", "user.email=t@example.com", "-c", "user.name=Release", "commit", "-q", "-m", "Release " + m);
+        }
+        shipyardCheckout = Files.createTempDirectory("shipyard-checkout");
+        run(shipyardCheckout, "git", "clone", "-q", "file://" + shipyardOrigin, ".");
+        run(shipyardCheckout, "git", "reset", "-q", "--hard", "HEAD~2");
+        r.add("shipyard.source-dir", () -> shipyardCheckout.toString());
         r.add("shipyard.data-dir", () -> dataDir.toString());
         r.add("shipyard.allow-local-repositories", () -> "true");
         r.add("shipyard.public-url", () -> "https://platform.example.com");
@@ -80,7 +94,13 @@ class PlatformIntegrationTest {
     static String git(String... args) throws IOException, InterruptedException {
         var cmd = new java.util.ArrayList<>(List.of("git", "-C", repo.toString()));
         cmd.addAll(List.of(args));
-        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        return run(null, cmd.toArray(String[]::new));
+    }
+
+    static String run(Path dir, String... cmd) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        if (dir != null) pb.directory(dir.toFile());
+        Process p = pb.redirectErrorStream(true).start();
         String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         p.waitFor(30, TimeUnit.SECONDS);
         if (p.exitValue() != 0) throw new IllegalStateException(out);
@@ -259,6 +279,47 @@ class PlatformIntegrationTest {
         mvc.perform(get("/api/applications/" + appId + "/updates?refresh=true").session(session))
                 .andExpect(jsonPath("$.status").value("UP_TO_DATE")).andExpect(jsonPath("$.behind").value(0));
         git("reset", "-q", "--hard", head);
+    }
+
+    @Test
+    @Order(8)
+    void reportsShipyardUpdatesButRefusesWithoutAComposeInstall() throws Exception {
+        String installed = run(shipyardCheckout, "git", "rev-parse", "HEAD");
+        String latest = run(shipyardOrigin, "git", "rev-parse", "HEAD");
+        JsonNode v = json(mvc.perform(get("/api/platform/update").session(session)).andExpect(status().isOk()).andReturn());
+        assertThat(v.path("commit").asText()).isEqualTo(installed);
+        assertThat(v.path("branch").asText()).isEqualTo("main");
+        assertThat(v.path("check").path("status").asText()).isEqualTo("BEHIND");
+        assertThat(v.path("check").path("behind").asInt()).isEqualTo(2);
+        assertThat(v.path("check").path("latestSha").asText()).isEqualTo(latest);
+        assertThat(v.path("check").path("commits").get(0).path("message").asText()).isEqualTo("Release v3");
+        // Not running in a compose container here: updating is reported as unavailable, with a reason.
+        assertThat(v.path("canUpdate").asBoolean()).isFalse();
+        assertThat(v.path("reason").asText()).isNotBlank();
+
+        mvc.perform(post("/api/platform/update").session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"commit\":\"" + latest + "\"}")).andExpect(status().isConflict());
+        mvc.perform(post("/api/platform/update").session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"commit\":\"nope\"}")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/platform/update/status").session(session)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/platform/update")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(9)
+    void reportsTheOutcomeWrittenByTheUpdateScript() throws Exception {
+        Path state = Files.createDirectories(dataDir.resolve("platform-update"));
+        Files.writeString(state.resolve("status.json"), "{\"state\":\"ROLLED_BACK\",\"fromSha\":\"a\",\"toSha\":\"b\","
+                + "\"message\":\"b did not become healthy; rolled back to a.\",\"startedAt\":\"2026-01-01T00:00:00Z\",\"finishedAt\":\"2026-01-01T00:05:00Z\"}");
+        Files.writeString(state.resolve("update.log"), "line 1\nline 2\n");
+        mvc.perform(get("/api/platform/update/status").session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("ROLLED_BACK"))
+                .andExpect(jsonPath("$.message").value("b did not become healthy; rolled back to a."))
+                .andExpect(jsonPath("$.log[1]").value("line 2"));
+        mvc.perform(get("/api/platform/update").session(session)).andExpect(jsonPath("$.update.state").value("ROLLED_BACK"));
+        // Without a session (the update restart signs everyone out): the outcome, but not the log.
+        mvc.perform(get("/api/platform/update/status")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("ROLLED_BACK")).andExpect(jsonPath("$.log").isEmpty());
     }
 
     // ------------------------------------------------------------------ helpers

@@ -9,7 +9,7 @@ import type { api as realApi, CreateApplicationRequest, ServiceSettings, UpdateA
 import type { EventTransport } from '../services/events';
 import type {
   ApplicationDetail, ApplicationStatus, ApplicationSummary, AuditEvent, DetectionPreview, DetectionResult, Deployment, DeploymentSource,
-  DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck,
+  DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck, PlatformUpdateStatus, PlatformVersion,
 } from '../services/types';
 
 type Api = typeof realApi;
@@ -706,6 +706,58 @@ export function demoApplications() {
   return apps.map((a) => ({ id: a.id, name: a.name, kind: a.profile.kind }));
 }
 
+// ---------------------------------------------------------------- Shipyard self-update (simulated)
+
+const platform = {
+  commit: sha(),
+  branch: 'main',
+  newer: [] as CommitInfo[], // newest first
+  update: null as PlatformUpdateStatus | null,
+  seeded: false,
+};
+function seedPlatform() {
+  if (platform.seeded) return;
+  platform.seeded = true;
+  platform.newer = [
+    { sha: sha(), author: 'iant89', message: 'Show a banner when newer commits are available', timestamp: iso(now() - 2 * 3600_000) },
+    { sha: sha(), author: 'iant89', message: 'Fix overflow menus crashing on open', timestamp: iso(now() - 26 * 3600_000) },
+  ];
+}
+function platformVersion(): PlatformVersion {
+  seedPlatform();
+  return {
+    commit: platform.commit, branch: platform.branch, repository: 'iant89/shipyard', canUpdate: true, reason: null, update: platform.update,
+    check: {
+      status: platform.newer.length ? 'BEHIND' : 'UP_TO_DATE', branch: platform.branch, currentSha: platform.commit,
+      latestSha: platform.newer[0]?.sha ?? platform.commit, behind: platform.newer.length, commits: platform.newer, checkedAt: iso(now()), message: null,
+    },
+  };
+}
+function startPlatformUpdate(commit: string): PlatformUpdateStatus {
+  seedPlatform();
+  const idx = platform.newer.findIndex((c) => c.sha === commit);
+  if (idx < 0) throw new DemoError(400, `Commit ${commit.slice(0, 7)} is not a newer commit on main`);
+  if (platform.update?.state === 'RUNNING') throw new DemoError(409, 'An update is already running');
+  const from = platform.commit;
+  const u: PlatformUpdateStatus = { state: 'RUNNING', fromSha: from, toSha: commit, message: 'Starting the updater', startedAt: iso(now()), finishedAt: null, log: [] };
+  platform.update = u;
+  const steps: [number, string][] = [
+    [800, `Fetching origin/main`], [1600, `Updating ${from.slice(0, 7)} → ${commit.slice(0, 7)} (${platform.newer.length - idx} commits)`],
+    [2600, 'Building the new image (this takes a few minutes)'], [6500, 'Stopping Shipyard and backing up the database'],
+    [7500, `Starting Shipyard ${commit.slice(0, 7)}`],
+  ];
+  for (const [ms, line] of steps) {
+    setTimeout(() => { u.message = line; u.log = [...u.log, `[${iso(now())}] ${line}`]; }, ms);
+  }
+  setTimeout(() => {
+    const done = `Updated to ${commit.slice(0, 7)}.`;
+    Object.assign(u, { state: 'SUCCEEDED', message: done, finishedAt: iso(now()), log: [...u.log, `[${iso(now())}] ${done}`] });
+    platform.commit = commit;
+    platform.newer = platform.newer.slice(0, idx);
+  }, 10_000);
+  return { ...u };
+}
+
 // ---------------------------------------------------------------- API implementation
 
 function wrap<T>(fn: () => T, ms?: number): Promise<T> {
@@ -983,6 +1035,9 @@ export function createDemoApi(): Api {
       caddy: () => wrap(() => ({ config: caddyfile(), status: `Applied at ${iso(now() - 4 * MIN)}` })),
       metrics: () => wrap(() => ({ latest: hostHistory[hostHistory.length - 1], history: hostHistory })),
       reloadCaddy: () => wrap(() => ({ applied: true, message: 'Caddy configuration applied' }), 500),
+      version: () => wrap(platformVersion, 700),
+      updateStatus: () => wrap(() => (platform.update ? { ...platform.update } : undefined)),
+      startUpdate: (commit: string) => wrap(() => startPlatformUpdate(commit), 600),
       activity: (limit = 100) => wrap(() => audit.slice(0, limit)),
       deployments: (limit = 100) => wrap(() => apps.flatMap((a) => a.deployments.filter((d) => d.number > 0))
         .sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit)),

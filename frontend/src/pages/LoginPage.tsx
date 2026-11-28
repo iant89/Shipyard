@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Button, Card, Form, Icon, Input, MessageStrip, PasswordInput, Text } from '@enterprise-ui/react';
 import { api, errorMessage } from '../services/api';
 import { useSession } from '../state/session';
+import { PendingUpdateNotice } from '../components/PlatformUpdateProgress';
 
 /** Sign-in, or first-run creation of the administrator account. */
 export function LoginPage({ setup }: { setup: boolean }) {
@@ -39,6 +40,7 @@ export function LoginPage({ setup }: { setup: boolean }) {
         subtitle={setup ? 'Create the administrator account to finish setup.' : 'Self-hosted application platform'}
       >
         <Form onSubmit={submit} aria-label={setup ? 'Create administrator' : 'Sign in'}>
+          {!setup && <PendingUpdateNotice />}
           {error && <MessageStrip tone="error">{error}</MessageStrip>}
           <Input label="Username" autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} autoFocus={!setup} />
           <PasswordInput label="Password" purpose={setup ? 'new' : 'current'} autoComplete={setup ? 'new-password' : 'current-password'} required

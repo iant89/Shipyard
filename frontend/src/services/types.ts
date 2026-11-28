@@ -292,3 +292,27 @@ export interface UpdateCheck {
   checkedAt: string;
   message: string | null;
 }
+
+/** The running (or last) update of Shipyard itself, written by scripts/self-update.sh. */
+export interface PlatformUpdateStatus {
+  state: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'ROLLED_BACK';
+  fromSha: string | null;
+  toSha: string | null;
+  message: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** Only included for a signed-in administrator. */
+  log: string[];
+}
+
+/** Shipyard's installed commit, available updates, and whether this install can update itself. */
+export interface PlatformVersion {
+  commit: string | null;
+  branch: string | null;
+  repository: string | null;
+  check: UpdateCheck | null;
+  canUpdate: boolean;
+  /** Why updating from the UI is unavailable. */
+  reason: string | null;
+  update: PlatformUpdateStatus | null;
+}
