@@ -44,6 +44,7 @@ export function DeploymentsTab({ detail }: { detail: ApplicationDetail }) {
         <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
           <OverflowMenu
             label={`Actions for deployment ${d.number}`}
+            placement="bottom-end"
             items={[
               { id: 'logs', label: 'View logs', icon: <Icon name="log" /> },
               { id: 'redeploy', label: 'Redeploy this commit', icon: <Icon name="synchronize" />, disabled: !d.commitSha },
