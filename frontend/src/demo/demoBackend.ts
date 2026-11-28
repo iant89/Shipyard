@@ -849,6 +849,14 @@ export function createDemoApi(): Api {
       return undefined as void;
     }),
     deploy: (id, ref) => wrap(() => requestDeployment(findApp(id), 'MANUAL', ref)),
+    exec: (id, command, cwd) => wrap(() => {
+      const a = findApp(id);
+      const cur = a.deployments.find((d) => d.id === a.currentId);
+      if (!cur) throw new DemoError(409, 'The application has not been deployed yet');
+      if (a.status === 'STOPPED') throw new DemoError(409, `The container ${cur.containerName} is not running`);
+      record('CONTAINER_COMMAND', 'APPLICATION', id, { container: cur.containerName ?? '', command });
+      return demoExec(command, cwd ?? '/app', cur.containerName ?? '');
+    }, 250),
     restart: (id) => wrap(() => {
       const a = findApp(id);
       if (!a.currentId) throw new DemoError(409, 'Application has no active deployment');
@@ -1092,3 +1100,35 @@ export const demoTransport: EventTransport = {
 };
 
 export { DemoError };
+
+/** A tiny pretend shell for the demo console. */
+function demoExec(command: string, cwd: string, container: string) {
+  const files: Record<string, string> = {
+    '/data/setup-token': 'demo-setup-7Q2KX-91F4M-ZT8RP\n',
+    '/app/package.json': '{\n  "name": "demo",\n  "private": true\n}\n',
+  };
+  const dirs: Record<string, string[]> = { '/': ['app', 'data', 'etc', 'tmp', 'usr'], '/app': ['main.js', 'package.json'], '/data': ['clawrouter.db', 'setup-token'] };
+  const abs = (p: string) => (p === '.' || p === '' ? cwd : (p.startsWith('/') ? p : `${cwd === '/' ? '' : cwd}/${p}`).replace(/\/+$/, '') || '/');
+  const [name, ...args] = command.trim().split(/\s+/);
+  let output = '';
+  let exitCode = 0;
+  let nextCwd = cwd;
+  if (name === 'cd') {
+    const target = abs(args[0] ?? '/');
+    if (dirs[target]) nextCwd = target;
+    else { output = `sh: cd: can't cd to ${args[0]}: No such file or directory\n`; exitCode = 2; }
+  } else if (name === 'pwd') output = `${cwd}\n`;
+  else if (name === 'ls') {
+    const target = abs(args.find((x) => !x.startsWith('-')) ?? '.');
+    if (dirs[target]) output = `${dirs[target].join('\n')}\n`;
+    else { output = `ls: ${target}: No such file or directory\n`; exitCode = 1; }
+  } else if (name === 'cat') {
+    const f = files[abs(args[0] ?? '')];
+    if (f) output = f;
+    else { output = `cat: can't open '${args[0] ?? ''}': No such file or directory\n`; exitCode = 1; }
+  } else if (name === 'echo') output = `${args.join(' ')}\n`;
+  else if (name === 'whoami') output = 'bun\n';
+  else if (name === 'hostname') output = `${container}\n`;
+  else { output = `sh: ${name}: not found (the demo console knows cd, pwd, ls, cat, echo, whoami, hostname)\n`; exitCode = 127; }
+  return { exitCode, output, cwd: nextCwd, truncated: false, timedOut: false, durationMs: 40, container };
+}

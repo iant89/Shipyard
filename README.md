@@ -143,6 +143,16 @@ so both mount the volume for a few seconds. SQLite and most databases handle tha
 software that takes an exclusive lock on its data directory may fail the health
 check until the previous container stops.
 
+### Console
+
+An application's **Console** tab runs shell commands in its running container
+(`docker exec … sh -c`), as the image's user, e.g. `cat /data/setup-token`. The
+working directory carries over between commands, so `cd` works; each command may run
+for 60 seconds and returns up to 256 KB of output. It is not a TTY, so interactive
+programs (vi, less, top) don't work. Secret environment values are masked in the
+output like in the logs, and every command is recorded in Activity. Images without
+`/bin/sh` (distroless, scratch) can't use it.
+
 ### Application network
 
 Caddy and every application share the `shipyard` Docker network. Its subnet is fixed

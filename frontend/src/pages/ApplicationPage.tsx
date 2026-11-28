@@ -13,6 +13,7 @@ import { UpdateBanner } from './application/UpdateBanner';
 import { isActive } from '../components/DeploymentStatus';
 import { OverviewTab } from './application/OverviewTab';
 import { DeploymentsTab } from './application/DeploymentsTab';
+import { ConsoleTab } from './application/ConsoleTab';
 import { LogsTab } from './application/LogsTab';
 import { MetricsTab } from './application/MetricsTab';
 import { EnvironmentTab } from './application/EnvironmentTab';
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'deployments', label: 'Deployments' },
   { id: 'logs', label: 'Logs' },
+  { id: 'console', label: 'Console' },
   { id: 'metrics', label: 'Metrics' },
   { id: 'environment', label: 'Environment' },
   { id: 'domains', label: 'Domains' },
@@ -133,6 +135,7 @@ export function ApplicationPage() {
         <TabPanel value="overview">{activeTab === 'overview' && <OverviewTab detail={detail} />}</TabPanel>
         <TabPanel value="deployments">{activeTab === 'deployments' && <DeploymentsTab detail={detail} />}</TabPanel>
         <TabPanel value="logs">{activeTab === 'logs' && <LogsTab detail={detail} />}</TabPanel>
+        <TabPanel value="console">{activeTab === 'console' && <ConsoleTab detail={detail} />}</TabPanel>
         <TabPanel value="metrics">{activeTab === 'metrics' && <MetricsTab detail={detail} />}</TabPanel>
         <TabPanel value="environment">{activeTab === 'environment' && <EnvironmentTab applicationId={id} />}</TabPanel>
         <TabPanel value="domains">{activeTab === 'domains' && <DomainsTab detail={detail} onChange={app.reload} />}</TabPanel>

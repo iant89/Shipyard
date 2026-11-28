@@ -142,6 +142,8 @@ export const api = {
     remove: (id: string) => del<void>(app(id)),
     deploy: (id: string, ref?: string) => post<Deployment>(`${app(id)}/deploy`, ref ? { ref } : {}),
     restart: (id: string) => post<void>(`${app(id)}/restart`),
+    /** Console: runs one shell command in the running container. */
+    exec: (id: string, command: string, cwd: string | null) => post<ExecResult>(`${app(id)}/exec`, { command, cwd }),
     stop: (id: string) => post<void>(`${app(id)}/stop`),
     start: (id: string) => post<void>(`${app(id)}/start`),
     rollback: (id: string, deploymentId?: string) => post<Deployment>(`${app(id)}/rollback`, deploymentId ? { deploymentId } : {}),
@@ -180,4 +182,15 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message;
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+export interface ExecResult {
+  exitCode: number;
+  output: string;
+  /** Working directory after the command (send it back with the next one). */
+  cwd: string;
+  truncated: boolean;
+  timedOut: boolean;
+  durationMs: number;
+  container: string;
 }

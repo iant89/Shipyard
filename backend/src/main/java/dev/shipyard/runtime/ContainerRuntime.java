@@ -59,6 +59,9 @@ public interface ContainerRuntime {
     /** Runs a command inside a running container. */
     ExecResult exec(String name, List<String> command);
 
+    /** Runs a command in a running container with a time limit; exit code -1 and a message when it times out. */
+    ExecResult exec(String name, List<String> command, java.time.Duration timeout);
+
     void removeImage(String tag);
 
     /** Names of containers carrying the given label value. */

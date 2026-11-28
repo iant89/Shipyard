@@ -224,6 +224,18 @@ public class DockerRuntime implements ContainerRuntime {
     }
 
     @Override
+    public ExecResult exec(String name, List<String> command, Duration timeout) {
+        List<String> cmd = new ArrayList<>(List.of(docker(), "exec", name));
+        cmd.addAll(command);
+        try {
+            ProcessRunner.Result r = ProcessRunner.run(cmd, null, timeout);
+            return new ExecResult(r.exitCode(), r.output());
+        } catch (ProcessRunner.CommandException e) {
+            return new ExecResult(-1, e.getMessage());
+        }
+    }
+
+    @Override
     public void removeImage(String tag) {
         ProcessRunner.run(List.of(docker(), "image", "rm", tag), null, SHORT);
     }

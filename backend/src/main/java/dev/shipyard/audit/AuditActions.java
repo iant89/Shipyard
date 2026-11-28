@@ -16,4 +16,5 @@ public final class AuditActions {
     public static final String ENVIRONMENT_VARIABLE_CHANGED = "ENVIRONMENT_VARIABLE_CHANGED";
     public static final String DOMAIN_CHANGED = "DOMAIN_CHANGED";
     public static final String USER_LOGGED_IN = "USER_LOGGED_IN";
+    public static final String CONTAINER_COMMAND = "CONTAINER_COMMAND";
 }
