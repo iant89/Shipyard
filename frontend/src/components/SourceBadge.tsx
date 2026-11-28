@@ -5,6 +5,7 @@ const tones: Record<DeploymentSource, Tone> = {
   WEBHOOK: 'information',
   MANUAL: 'neutral',
   API: 'neutral',
+  IDE: 'information',
   SCHEDULED: 'neutral',
   SYSTEM: 'warning',
 };

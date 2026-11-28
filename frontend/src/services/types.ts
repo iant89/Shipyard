@@ -7,7 +7,75 @@ export type DeploymentStatus =
   | 'CREATED' | 'QUEUED' | 'CLONING' | 'DETECTING' | 'BUILDING' | 'TESTING' | 'DEPLOYING' | 'STARTING' | 'HEALTH_CHECK'
   | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'ROLLED_BACK' | 'CANCELLED';
 
-export type DeploymentSource = 'MANUAL' | 'WEBHOOK' | 'API' | 'SCHEDULED' | 'SYSTEM';
+export type DeploymentSource = 'MANUAL' | 'WEBHOOK' | 'API' | 'IDE' | 'SCHEDULED' | 'SYSTEM';
+
+export interface WorkspaceEntry {
+  name: string;
+  path: string;
+  kind: 'DIRECTORY' | 'FILE' | 'SYMLINK' | 'OTHER';
+  size: number;
+}
+
+export interface WorkspaceDirectory {
+  path: string;
+  entries: WorkspaceEntry[];
+  truncated: boolean;
+}
+
+export interface WorkspaceFileIndex {
+  entries: WorkspaceEntry[];
+  truncated: boolean;
+}
+
+export interface WorkspaceFile {
+  path: string;
+  content: string;
+  size: number;
+}
+
+export interface WorkspaceInfo {
+  branch: string;
+  branches: string[];
+  headSha: string;
+  changes: string[];
+}
+
+export interface WorkspaceSearchMatch {
+  path: string;
+  lineNumber: number;
+  preview: string;
+}
+
+export interface WorkspaceSearchResponse {
+  matches: WorkspaceSearchMatch[];
+  truncated: boolean;
+}
+
+export interface WorkspaceChangedFile {
+  path: string;
+  status: string;
+}
+
+export interface WorkspaceCommitFiles {
+  files: WorkspaceChangedFile[];
+  truncated: boolean;
+}
+
+export interface WorkspaceCommitDiff {
+  commitSha: string;
+  path: string;
+  diff: string;
+  truncated: boolean;
+}
+
+export interface WorkspaceBuildResult {
+  success: boolean;
+  framework: string | null;
+  projectType: string | null;
+  output: string[];
+  error: string | null;
+  durationMs: number;
+}
 
 export interface MetricSample {
   timestamp: string;

@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Entry point for every deployment trigger. Manual, webhook, API, scheduled
+ * Entry point for every deployment trigger. Manual, IDE, webhook, API, scheduled
  * and system deployments all become a {@link Deployment} plus a queue item
  * here, and are executed by the same {@link DeploymentPipeline}.
  */
@@ -93,7 +93,7 @@ public class DeploymentService {
                 null, null, null, req.triggeredBy(), Time.now(), null, null, null);
         deployments.insert(d);
         queue.enqueue(app.id(), d.id(), QueueItem.DEPLOY, req.source().name(), commit, branch,
-                req.source() == DeploymentSource.MANUAL ? 10 : 0);
+                req.source() == DeploymentSource.MANUAL || req.source() == DeploymentSource.IDE ? 10 : 0);
         deployments.updateStatus(d.id(), DeploymentStatus.QUEUED);
         audit.record(AuditActions.DEPLOYMENT_STARTED, "DEPLOYMENT", d.id(),
                 Map.of("application", app.slug(), "number", d.number(), "source", req.source().name(), "ref", commit != null ? commit : branch));
