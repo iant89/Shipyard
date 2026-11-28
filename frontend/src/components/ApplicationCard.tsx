@@ -22,7 +22,7 @@ export function ApplicationCard({ app }: { app: ApplicationSummary }) {
           { term: 'Deployment', description: d ? `#${d.number} · ${shortSha(d.commitSha)}` : 'Not deployed' },
           { term: 'Type', description: app.framework ?? (app.projectType ? app.projectType.toLowerCase() : '–') },
           { term: 'CPU', description: app.metrics ? formatPercent(app.metrics.cpuPercent, 1) : app.projectType === 'STATIC' ? 'Static' : '–' },
-          { term: 'Memory', description: app.metrics ? formatBytes(app.metrics.memoryBytes) : '–' },
+          { term: 'Memory used', description: app.metrics ? formatBytes(app.metrics.memoryBytes) : '–' },
         ]}
       />
       {app.primaryUrl && (

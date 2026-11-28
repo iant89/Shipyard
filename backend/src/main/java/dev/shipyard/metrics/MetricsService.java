@@ -133,8 +133,9 @@ public class MetricsService {
     private MetricSample sampleHost(String now) {
         OperatingSystemMXBean os = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
         double cpu = Math.max(0, os.getCpuLoad()) * 100;
-        long total = os.getTotalMemorySize();
-        long used = total - os.getFreeMemorySize();
+        HostMemory memory = readHostMemory(os.getTotalMemorySize(), os.getFreeMemorySize());
+        long total = memory.totalBytes();
+        long used = total - memory.availableBytes();
         long diskTotal = 0, diskUsed = 0;
         try {
             FileStore store = Files.getFileStore(layout.root());
@@ -154,6 +155,38 @@ public class MetricsService {
         lastHostNet = net;
         lastHostNetAt = t;
         return new MetricSample(now, cpu, used, total, rx, tx, diskUsed, diskTotal);
+    }
+
+    private record HostMemory(long totalBytes, long availableBytes) {}
+
+    /**
+     * Use Linux's MemAvailable instead of MemFree so reclaimable cache is not
+     * counted as memory in use. Fall back to the JVM's OS bean on other hosts.
+     */
+    private static HostMemory readHostMemory(long fallbackTotalBytes, long fallbackAvailableBytes) {
+        try {
+            long totalBytes = 0;
+            long availableBytes = -1;
+            for (String line : Files.readAllLines(Path.of("/proc/meminfo"))) {
+                if (line.startsWith("MemTotal:")) totalBytes = parseMemInfoBytes(line);
+                else if (line.startsWith("MemAvailable:")) availableBytes = parseMemInfoBytes(line);
+            }
+            if (totalBytes > 0 && availableBytes >= 0) {
+                return new HostMemory(totalBytes, Math.min(totalBytes, availableBytes));
+            }
+        } catch (IOException | NumberFormatException ignored) {
+            // Use the portable OS bean values if procfs is unavailable or malformed.
+        }
+
+        long totalBytes = Math.max(0, fallbackTotalBytes);
+        long availableBytes = Math.max(0, Math.min(totalBytes, fallbackAvailableBytes));
+        return new HostMemory(totalBytes, availableBytes);
+    }
+
+    private static long parseMemInfoBytes(String line) {
+        String[] fields = line.strip().split("\\s+");
+        if (fields.length < 2) throw new NumberFormatException("Invalid /proc/meminfo line");
+        return Long.parseLong(fields[1]) * 1024;
     }
 
     /** Sums /proc/net/dev counters, excluding loopback and virtual interfaces. Linux only. */
