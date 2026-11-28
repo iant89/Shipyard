@@ -92,6 +92,21 @@ body,
   user-select: none;
 }
 
+/* Combined build + deployment log: a fourth column tags each line's source. */
+.sy-log-line[data-kind] {
+  grid-template-columns: 4.5em auto 4.5em 1fr;
+}
+
+.sy-log-kind {
+  color: var(--eui-color-text-secondary);
+  user-select: none;
+}
+
+.sy-log-line[data-kind='deployment'] .sy-log-kind {
+  color: var(--eui-color-brand, var(--eui-color-text-secondary));
+  font-weight: 600;
+}
+
 .sy-log-text {
   white-space: pre;
 }

@@ -125,8 +125,14 @@ export function AddApplicationPage() {
         environment: parseEnv(d.env).map((e) => ({ ...e, secret: d.envSecret })),
         deployNow: true,
       });
-      toast.show({ title: `${created.summary.name} created`, description: 'The first deployment has been queued.', tone: 'success' });
-      navigate(`/applications/${created.summary.id}${d.autoDeploy ? '/webhook' : ''}`);
+      const first = created.summary.latestDeployment;
+      toast.show({
+        title: `${created.summary.name} created`,
+        description: first && d.autoDeploy ? 'The first deployment is building. Set up the GitHub webhook from the Webhook tab.' : 'The first deployment has been queued.',
+        tone: 'success',
+      });
+      // Land on the first deployment so the build can be watched live.
+      navigate(first ? `/applications/${created.summary.id}/deployments/${first.id}` : `/applications/${created.summary.id}${d.autoDeploy ? '/webhook' : ''}`);
     } catch (e) {
       toast.show({ title: 'Could not create application', description: errorMessage(e), tone: 'error' });
       throw e;

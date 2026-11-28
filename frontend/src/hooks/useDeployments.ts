@@ -10,10 +10,12 @@ export function useDeployments(applicationId: string, limit = 50) {
   });
 }
 
-export function useDeployment(applicationId: string, deploymentId: string) {
+/** {@code pollMs} adds a polling fallback (e.g. while the deployment is in progress). */
+export function useDeployment(applicationId: string, deploymentId: string, pollMs?: number) {
   return useResource(() => api.applications.deployment(applicationId, deploymentId), [applicationId, deploymentId], {
     refreshOn: DEPLOYMENT_EVENTS,
     stream: applicationId,
+    pollMs,
   });
 }
 

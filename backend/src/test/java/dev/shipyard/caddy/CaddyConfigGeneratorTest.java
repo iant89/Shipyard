@@ -27,6 +27,9 @@ class CaddyConfigGeneratorTest {
         assertThat(cfg).contains("respond \"Application is stopped\" 503");
         assertThat(cfg).doesNotContain("x:1");
         assertThat(cfg).doesNotContain("auto_https off");
+        // Server-Sent Events must not be compressed, or Caddy buffers them.
+        assertThat(cfg).contains("encode zstd gzip {").contains("header Content-Type text/html*");
+        assertThat(cfg).doesNotContain("event-stream").doesNotContain("text/*");
     }
 
     @Test

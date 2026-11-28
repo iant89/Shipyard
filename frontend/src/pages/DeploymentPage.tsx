@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BusyIndicator, Button, Card, DescriptionList, EmptyState, Icon, MessageStrip, Page } from '@enterprise-ui/react';
 import { useDeployment } from '../hooks/useDeployments';
@@ -17,10 +18,15 @@ export function DeploymentPage() {
   const { id = '', deploymentId = '' } = useParams();
   const navigate = useNavigate();
   const app = useApplication(id);
-  const dep = useDeployment(id, deploymentId);
+  // Poll while the deployment is in progress so the pipeline keeps moving even
+  // if real-time events are delayed by a proxy or a reconnect.
+  const [polling, setPolling] = useState(true);
+  const dep = useDeployment(id, deploymentId, polling ? 3000 : undefined);
   const { busy, run } = useAsyncAction();
   const d = dep.data;
   const a = app.data?.summary;
+  const inProgress = !d || isActive(d.status) || d.status === 'CREATED';
+  useEffect(() => setPolling(inProgress), [inProgress]);
 
   if (dep.loading) return <BusyIndicator active text="Loading deployment…" style={{ minHeight: '50vh' }} />;
   if (!d) {
@@ -87,7 +93,7 @@ export function DeploymentPage() {
             ]}
           />
         </Card>
-        <BuildLogViewer applicationId={id} deploymentId={d.id} live={active || d.status === 'CREATED'} />
+        <BuildLogViewer applicationId={id} deploymentId={d.id} live={inProgress} />
       </div>
     </Page>
   );
