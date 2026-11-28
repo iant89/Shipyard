@@ -84,6 +84,7 @@ export interface CreateApplicationRequest {
   branch: string;
   accessToken?: string;
   autoDeploy: boolean;
+  autoUpdate?: boolean;
   domains: string[];
   service: ServiceSettings;
   environment: { name: string; value: string; secret: boolean }[];
@@ -100,6 +101,7 @@ export interface UpdateApplicationRequest {
   autoDeploy?: boolean;
   autoRollback?: boolean;
   cancelStaleBuilds?: boolean;
+  autoUpdate?: boolean;
   service?: ServiceSettings;
 }
 

@@ -89,6 +89,7 @@ export function OverviewTab({ detail }: { detail: ApplicationDetail }) {
               { term: 'Webhook status', description: webhook.data ? <StatusIndicator size="sm" tone={webhook.data.status === 'ACTIVE' ? 'success' : webhook.data.status === 'ERROR' ? 'error' : webhook.data.status === 'WAITING' ? 'information' : 'neutral'}>{humanize(webhook.data.status)}</StatusIndicator> : '–' },
               { term: 'Last event', description: webhook.data?.lastEvent ? `${webhook.data.lastEvent.eventType} · ${relativeTime(webhook.data.lastEvent.receivedAt)}` : 'None received' },
               { term: 'Last commit', description: webhook.data?.lastEvent?.commitSha ? shortSha(webhook.data.lastEvent.commitSha) : '–' },
+              { term: 'Automatic updates', description: <StatusIndicator size="sm" tone={a.autoUpdate ? 'success' : 'neutral'}>{a.autoUpdate ? 'Every 90 s' : 'Off'}</StatusIndicator> },
               { term: 'Automatic rollback', description: detail.autoRollback ? 'On' : 'Off' },
               { term: 'Cancel stale builds', description: detail.cancelStaleBuilds ? 'On' : 'Off' },
             ]}

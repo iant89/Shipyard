@@ -63,6 +63,12 @@ GitHub (*Settings → Webhooks → Add webhook*) with the payload URL and secret
 there, content type `application/json`, and the *push* event. Use **Test webhook**
 to check the configuration without deploying.
 
+No webhook (for example, a server GitHub can't reach)? Turn on **Automatic updates**
+in the application's *Settings*: Shipyard checks the branch every 90 seconds and
+deploys new commits. A commit is tried once, so a failing commit is not rebuilt
+over and over; the next push is picked up as usual. A stopped application is left
+stopped.
+
 Point each domain's DNS at the server. Caddy obtains and renews certificates
 automatically; switch HTTPS off for a single LAN-only name, or set
 `SHIPYARD_HTTPS=false` to serve the whole platform over plain HTTP (no

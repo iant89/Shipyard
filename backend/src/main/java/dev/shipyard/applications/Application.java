@@ -11,6 +11,8 @@ public record Application(
         boolean autoRollback,
         boolean cancelStaleBuilds,
         int buildConcurrency,
+        /** Poll the branch every 90 seconds and deploy new commits (see CommitPoller). */
+        boolean autoUpdate,
         String createdAt,
         String updatedAt) {
 }

@@ -84,6 +84,7 @@ class PlatformIntegrationTest {
         run(shipyardCheckout, "git", "reset", "-q", "--hard", "HEAD~2");
         r.add("shipyard.source-dir", () -> shipyardCheckout.toString());
         r.add("shipyard.data-dir", () -> dataDir.toString());
+        r.add("shipyard.auto-update-interval-seconds", () -> "2");
         r.add("shipyard.allow-local-repositories", () -> "true");
         r.add("shipyard.public-url", () -> "https://platform.example.com");
     }
@@ -320,6 +321,48 @@ class PlatformIntegrationTest {
         // Without a session (the update restart signs everyone out): the outcome, but not the log.
         mvc.perform(get("/api/platform/update/status")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("ROLLED_BACK")).andExpect(jsonPath("$.log").isEmpty());
+    }
+
+    @Test
+    @Order(10)
+    void autoUpdateDeploysNewCommitsOnce() throws Exception {
+        // HEAD ("fourth", unbuildable like "break it") was never deployed; #3 failed on "break it".
+        String head = git("rev-parse", "HEAD");
+        mvc.perform(put("/api/applications/" + appId).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"autoUpdate\":true}")).andExpect(status().isOk()).andExpect(jsonPath("$.summary.autoUpdate").value(true));
+
+        JsonNode d = awaitDeployment(4, "FAILED");
+        assertThat(d.path("source").asText()).isEqualTo("SCHEDULED");
+        assertThat(d.path("commitSha").asText()).isEqualTo(head);
+        assertThat(d.path("commitMessage").asText()).isEqualTo("fourth");
+
+        // The failed commit is not retried on later polls (interval is 2 s in this test).
+        Thread.sleep(6000);
+        assertThat(deploymentNumbers()).doesNotContain(5);
+
+        // A new push is picked up.
+        Files.writeString(repo.resolve("index.html"), "<h1>v5</h1>");
+        git("add", "-A");
+        git("commit", "-q", "-m", "fifth");
+        JsonNode fifth = awaitDeployment(5, "RUNNING");
+        assertThat(fifth.path("source").asText()).isEqualTo("SCHEDULED");
+        assertThat(fifth.path("commitMessage").asText()).isEqualTo("fifth");
+        mvc.perform(get("/api/applications/" + appId).session(session)).andExpect(jsonPath("$.summary.currentDeployment.number").value(5));
+
+        // Off again: new commits are left alone.
+        mvc.perform(put("/api/applications/" + appId).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"autoUpdate\":false}")).andExpect(jsonPath("$.summary.autoUpdate").value(false));
+        Files.writeString(repo.resolve("index.html"), "<h1>v6</h1>");
+        git("commit", "-q", "-am", "sixth");
+        Thread.sleep(6000);
+        assertThat(deploymentNumbers()).doesNotContain(6);
+    }
+
+    private List<Integer> deploymentNumbers() throws Exception {
+        List<Integer> numbers = new java.util.ArrayList<>();
+        json(mvc.perform(get("/api/applications/" + appId + "/deployments").session(session)).andReturn())
+                .forEach(x -> numbers.add(x.path("number").asInt()));
+        return numbers;
     }
 
     // ------------------------------------------------------------------ helpers

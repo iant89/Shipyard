@@ -26,7 +26,7 @@ public class ApplicationViews {
     public record ApplicationSummary(String id, String slug, String name, String description, String status,
                                      RepositoryView repository, DeploymentSummary currentDeployment, DeploymentSummary latestDeployment,
                                      String primaryUrl, List<String> urls, MetricSample metrics, String projectType, String framework,
-                                     boolean autoDeploy, String updatedAt) {}
+                                     boolean autoDeploy, boolean autoUpdate, String updatedAt) {}
 
     public record ApplicationDetail(ApplicationSummary summary, ServiceConfig service, List<Domain> domains, boolean autoRollback,
                                     boolean cancelStaleBuilds, int buildConcurrency, String createdAt) {}
@@ -70,7 +70,7 @@ public class ApplicationViews {
         Deployment typed = current != null ? current : latest;
         return new ApplicationSummary(a.id(), a.slug(), a.name(), a.description(), a.status().name(), rv, deployment(current),
                 deployment(latest), primary, urls, metrics.latest(a.id()), typed == null ? null : typed.projectType(),
-                typed == null ? null : typed.framework(), a.autoDeploy(), a.updatedAt());
+                typed == null ? null : typed.framework(), a.autoDeploy(), a.autoUpdate(), a.updatedAt());
     }
 
     public ApplicationDetail detail(Application a) {

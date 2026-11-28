@@ -11,6 +11,8 @@ interface Props {
   currentDeploymentId: string | null;
   /** A deployment is queued or in progress, so an update is already under way. */
   deploying: boolean;
+  /** Automatic updates are on: the newest commit is deployed within 90 seconds unless it already failed. */
+  autoUpdate?: boolean;
   /** The latest deployment failed and is not the running one: flag its commit so it is not retried unknowingly. */
   failed?: { sha: string | null; number: number } | null;
   onDeployed: (d: Deployment) => void;
@@ -33,7 +35,7 @@ const describe = (c: CommitInfo) => `${shortSha(c.sha)} · ${c.author} · ${rela
  * than the running deployment. One newer commit: deploy it directly. Several:
  * deploy the newest, or pick one from the list.
  */
-export function UpdateBanner({ applicationId, currentDeploymentId, deploying, failed, onDeployed }: Props) {
+export function UpdateBanner({ applicationId, currentDeploymentId, deploying, autoUpdate, failed, onDeployed }: Props) {
   const [check, setCheck] = useState<UpdateCheck | null>(null);
   const [dismissed, setDismissed] = useState(() => readDismissed(applicationId));
   const [choosing, setChoosing] = useState(false);
@@ -93,6 +95,7 @@ export function UpdateBanner({ applicationId, currentDeploymentId, deploying, fa
       >
         {several ? 'Latest: ' : ''}“{latest.message}” ({describe(latest)}). The running deployment is {shortSha(check.currentSha)}.
         {failedNote(latest) && <> {failedNote(latest)}</>}
+        {autoUpdate && !failedNote(latest) && <> Automatic updates will deploy it within 90 seconds.</>}
       </MessageStrip>
 
       <Dialog

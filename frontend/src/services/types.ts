@@ -65,6 +65,8 @@ export interface ApplicationSummary {
   projectType: 'STATIC' | 'SERVER' | null;
   framework: string | null;
   autoDeploy: boolean;
+  /** Polls the branch every 90 seconds and deploys new commits. */
+  autoUpdate: boolean;
   updatedAt: string;
 }
 

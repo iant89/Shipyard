@@ -69,6 +69,8 @@ interface AppState {
   branch: string;
   privateRepo: boolean;
   autoDeploy: boolean;
+  /** Poll the branch every 90 seconds and deploy new commits. */
+  autoUpdate: boolean;
   autoRollback: boolean;
   cancelStaleBuilds: boolean;
   profile: Profile;
@@ -220,7 +222,7 @@ function seedApp(name: string, repo: string, profile: Profile, count: number, op
   const id = slugify(name);
   const a: AppState = {
     id, slug: slugify(name), name, description: opts.description ?? null, status: 'RUNNING', repo, branch: 'main', privateRepo: false,
-    autoDeploy: true, autoRollback: true, cancelStaleBuilds: true, profile, service: serviceFor(id, profile), currentId: null,
+    autoDeploy: true, autoUpdate: false, autoRollback: true, cancelStaleBuilds: true, profile, service: serviceFor(id, profile), currentId: null,
     deployments: [], branchCommits: [], logs: new Map(), domains: [], env: opts.env ?? [], webhookEndpoint: sha().slice(0, 40), webhookSecret: sha().slice(0, 64),
     deployOnPush: true, webhookEvents: [], metrics: [], queue: [], busy: false, cancelRequested: null, createdAt: iso(created), updatedAt: iso(now() - 40 * MIN),
   };
@@ -330,6 +332,15 @@ function seed() {
   for (let i = 0; i < 120; i++) hostHistory.push(hostSample(now() - (120 - i) * 5000, i));
   audit.sort((x, y) => y.timestamp.localeCompare(x.timestamp));
 
+  // Automatic updates: same rules as the server's CommitPoller.
+  setInterval(() => {
+    for (const a of apps) {
+      if (!a.autoUpdate || !a.currentId || a.status === 'STOPPED' || a.busy || a.queue.length) continue;
+      const head = a.branchCommits[0];
+      if (head && !a.deployments.some((d) => d.commitSha === head.sha)) requestDeployment(a, 'SCHEDULED', head.sha);
+    }
+  }, 90_000);
+
   let tick = 120;
   setInterval(() => {
     tick++;
@@ -380,7 +391,7 @@ function summary(a: AppState): ApplicationSummary {
     currentDeployment: current, latestDeployment: a.deployments[0] ?? null,
     primaryUrl: primary ? `${primary.tlsEnabled ? 'https' : 'http'}://${primary.hostname}` : urls[0] ?? null, urls,
     metrics: a.profile.kind === 'SERVER' && a.currentId && a.status !== 'STOPPED' ? a.metrics[a.metrics.length - 1] ?? null : null,
-    projectType: a.profile.kind, framework: a.profile.framework, autoDeploy: a.autoDeploy, updatedAt: a.updatedAt,
+    projectType: a.profile.kind, framework: a.profile.framework, autoDeploy: a.autoDeploy, autoUpdate: a.autoUpdate, updatedAt: a.updatedAt,
   };
 }
 
@@ -783,7 +794,7 @@ export function createDemoApi(): Api {
       const t = iso(now());
       const a: AppState = {
         id, slug, name: body.name || repo.split('/')[1], description: body.description ?? null, status: 'CREATED', repo, branch: body.branch,
-        privateRepo: !!body.accessToken, autoDeploy: body.autoDeploy, autoRollback: true, cancelStaleBuilds: true, profile: p,
+        privateRepo: !!body.accessToken, autoDeploy: body.autoDeploy, autoUpdate: !!body.autoUpdate, autoRollback: true, cancelStaleBuilds: true, profile: p,
         service: serviceFor(id, p, body.service), currentId: null, deployments: [], logs: new Map(),
         branchCommits: [{ sha: sha(), author: pick(AUTHORS), message: pick(MESSAGES), timestamp: t }],
         domains: body.domains.map((h, i) => ({ id: uid('dom'), applicationId: id, hostname: h.toLowerCase(), tlsEnabled: true, primary: i === 0, createdAt: t })),
@@ -805,6 +816,7 @@ export function createDemoApi(): Api {
       if (body.accessToken) a.privateRepo = true;
       if (body.clearAccessToken) a.privateRepo = false;
       if (body.autoDeploy !== undefined) a.autoDeploy = body.autoDeploy;
+      if (body.autoUpdate !== undefined) a.autoUpdate = body.autoUpdate;
       if (body.autoRollback !== undefined) a.autoRollback = body.autoRollback;
       if (body.cancelStaleBuilds !== undefined) a.cancelStaleBuilds = body.cancelStaleBuilds;
       if (body.service) {

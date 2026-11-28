@@ -118,7 +118,7 @@ export function ApplicationPage() {
           {latest.error}{current ? ` Deployment #${current.number} is still serving traffic.` : ''}
         </MessageStrip>
       )}
-      <UpdateBanner applicationId={id} currentDeploymentId={current?.id ?? null} deploying={!!latest && isActive(latest.status)}
+      <UpdateBanner applicationId={id} currentDeploymentId={current?.id ?? null} deploying={!!latest && isActive(latest.status)} autoUpdate={a.autoUpdate}
         failed={latest?.status === 'FAILED' && latest.id !== current?.id ? { sha: latest.commitSha, number: latest.number } : null}
         onDeployed={(d) => { app.reload(); navigate(`/applications/${id}/deployments/${d.id}`); }} />
       {a.status === 'CRASHED' && (

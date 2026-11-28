@@ -28,6 +28,7 @@ interface Draft {
   // deployment
   domain: string;
   autoDeploy: boolean;
+  autoUpdate: boolean;
   healthCheckType: string;
   healthCheckPath: string;
   cpuLimit: number | null;
@@ -39,7 +40,7 @@ interface Draft {
 const initial: Draft = {
   name: '', description: '', repository: '', branch: 'main', privateRepo: false, token: '', rootDirectory: '',
   projectType: '', installCommand: '', buildCommand: '', testCommand: '', outputDirectory: '', startCommand: '', port: null,
-  domain: '', autoDeploy: true, healthCheckType: 'HTTP', healthCheckPath: '', cpuLimit: 1, memoryLimitMb: 512, env: '', envSecret: true,
+  domain: '', autoDeploy: true, autoUpdate: false, healthCheckType: 'HTTP', healthCheckPath: '', cpuLimit: 1, memoryLimitMb: 512, env: '', envSecret: true,
 };
 
 /** Parses KEY=VALUE lines. */
@@ -113,6 +114,7 @@ export function AddApplicationPage() {
         branch: d.branch,
         accessToken: token,
         autoDeploy: d.autoDeploy,
+        autoUpdate: d.autoUpdate,
         domains: d.domain.trim() ? [d.domain.trim()] : [],
         service: service(),
         environment: parseEnv(d.env).map((e) => ({ ...e, secret: d.envSecret })),
@@ -258,6 +260,8 @@ export function AddApplicationPage() {
                 <FormGroup columns={2} title="Automation">
                   <Switch label="Automatic deployment" checked={d.autoDeploy} onChange={(v) => set('autoDeploy', v)}
                     description={`Deploy every push to ${d.branch} through a GitHub webhook.`} />
+                  <Switch label="Automatic updates" checked={d.autoUpdate} onChange={(v) => set('autoUpdate', v)}
+                    description={`Check ${d.branch} every 90 seconds and deploy new commits. No webhook needed.`} />
                 </FormGroup>
                 {effectiveType === 'SERVER' && (
                   <FormGroup columns={2} title="Health check and resources">
@@ -302,6 +306,7 @@ export function AddApplicationPage() {
                       : `${value(d.startCommand, det?.startCommand)} on port ${d.port ?? det?.port ?? 8080} · ${d.cpuLimit} CPU · ${d.memoryLimitMb} MB` },
                     { term: 'Domain', description: d.domain || 'None yet' },
                     { term: 'Webhook', description: d.autoDeploy ? `Automatic deployment on push to ${d.branch}` : 'Manual deployments only' },
+                    { term: 'Automatic updates', description: d.autoUpdate ? `Checks ${d.branch} every 90 seconds` : 'Off' },
                     { term: 'Environment', description: `${parseEnv(d.env).length} variable(s)${parseEnv(d.env).length && d.envSecret ? ', secret' : ''}` },
                     { term: 'Health check', description: effectiveType === 'STATIC' ? 'Artifact check' : `${d.healthCheckType}${d.healthCheckType === 'HTTP' ? ` ${d.healthCheckPath || det?.healthCheckPath || '/'}` : ''}` },
                   ]}

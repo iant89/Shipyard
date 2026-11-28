@@ -14,7 +14,7 @@ public class ApplicationRepository {
             rs.getString("id"), rs.getString("slug"), rs.getString("name"), rs.getString("description"),
             ApplicationStatus.valueOf(rs.getString("status")), rs.getString("current_deployment_id"),
             rs.getInt("auto_deploy") == 1, rs.getInt("auto_rollback") == 1, rs.getInt("cancel_stale_builds") == 1,
-            rs.getInt("build_concurrency"), rs.getString("created_at"), rs.getString("updated_at"));
+            rs.getInt("build_concurrency"), rs.getInt("auto_update") == 1, rs.getString("created_at"), rs.getString("updated_at"));
 
     private final JdbcTemplate jdbc;
 
@@ -24,6 +24,10 @@ public class ApplicationRepository {
 
     public List<Application> findAll() {
         return jdbc.query("SELECT * FROM applications ORDER BY name COLLATE NOCASE", MAPPER);
+    }
+
+    public List<Application> findAutoUpdating() {
+        return jdbc.query("SELECT * FROM applications WHERE auto_update = 1", MAPPER);
     }
 
     public Optional<Application> findById(String id) {
@@ -42,17 +46,17 @@ public class ApplicationRepository {
     public void insert(Application a) {
         jdbc.update("""
                 INSERT INTO applications(id, slug, name, description, status, current_deployment_id, auto_deploy, auto_rollback,
-                    cancel_stale_builds, build_concurrency, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    cancel_stale_builds, build_concurrency, auto_update, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 a.id(), a.slug(), a.name(), a.description(), a.status().name(), a.currentDeploymentId(), b(a.autoDeploy()),
-                b(a.autoRollback()), b(a.cancelStaleBuilds()), a.buildConcurrency(), a.createdAt(), a.updatedAt());
+                b(a.autoRollback()), b(a.cancelStaleBuilds()), a.buildConcurrency(), b(a.autoUpdate()), a.createdAt(), a.updatedAt());
     }
 
     public void update(Application a) {
         jdbc.update("""
                 UPDATE applications SET name = ?, description = ?, auto_deploy = ?, auto_rollback = ?, cancel_stale_builds = ?,
-                    build_concurrency = ?, updated_at = ? WHERE id = ?""",
+                    build_concurrency = ?, auto_update = ?, updated_at = ? WHERE id = ?""",
                 a.name(), a.description(), b(a.autoDeploy()), b(a.autoRollback()), b(a.cancelStaleBuilds()),
-                a.buildConcurrency(), Time.now(), a.id());
+                a.buildConcurrency(), b(a.autoUpdate()), Time.now(), a.id());
     }
 
     public void updateStatus(String id, ApplicationStatus status) {

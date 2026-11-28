@@ -78,7 +78,13 @@ public class RepositoryManager {
 
     /** Resolves the current head commit of a branch on the remote. */
     public String resolveBranchHead(GitRepository repo, String branch) {
-        String out = git(null, authEnv(repo.accessTokenEnc()), "ls-remote", repo.url(), "refs/heads/" + branch);
+        return resolveBranchHead(repo, branch, NETWORK_TIMEOUT);
+    }
+
+    /** As {@link #resolveBranchHead(GitRepository, String)}, giving up after {@code timeout}. */
+    public String resolveBranchHead(GitRepository repo, String branch, Duration timeout) {
+        List<String> cmd = List.of(props.gitBinary(), "ls-remote", repo.url(), "refs/heads/" + branch);
+        String out = ProcessRunner.check(cmd, null, authEnv(repo.accessTokenEnc()), timeout);
         for (String line : out.split("\n")) {
             String[] parts = line.split("\\s+");
             if (parts.length == 2 && parts[1].equals("refs/heads/" + branch)) return parts[0];

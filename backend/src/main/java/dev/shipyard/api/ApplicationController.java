@@ -350,7 +350,7 @@ public class ApplicationController {
         if (req.deployOnPush() != null) webhooks.setDeployOnPush(id, req.deployOnPush());
         if (req.automaticDeployment() != null) {
             service.update(id, new ApplicationService.UpdateRequest(null, null, null, null, null, null, req.automaticDeployment(),
-                    null, null, null));
+                    null, null, null, null));
         }
         return webhooks.view(id);
     }
