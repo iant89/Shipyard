@@ -42,5 +42,10 @@ class CaddyConfigGeneratorTest {
         assertThat(cfg).contains("http://platform.example.com {");
         assertThat(cfg).contains("http://example.com {");
         assertThat(cfg).contains("http://app.lan {");
+
+        // When no platform domain is set, :80 stays open and proxies to the platform UI.
+        String fallback = CaddyConfigGenerator.generate("unix//run/caddy-admin/admin.sock", false, "", "",
+                "shipyard:8080", List.of());
+        assertThat(fallback).contains(":80 {\n\timport shipyard_common\n\treverse_proxy shipyard:8080");
     }
 }

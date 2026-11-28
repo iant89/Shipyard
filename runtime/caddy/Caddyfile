@@ -3,6 +3,7 @@
 # so hosted applications on the shipyard network cannot reconfigure Caddy.
 {
 	admin unix//run/caddy-admin/admin.sock
+	auto_https off
 }
 
 :80 {

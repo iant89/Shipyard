@@ -311,7 +311,7 @@ public class ApplicationController {
     ResponseEntity<Domain> addDomain(@PathVariable String id, @RequestBody DomainRequest req) {
         applications.get(id);
         return ResponseEntity.status(HttpStatus.CREATED).body(domains.add(id, req.hostname(),
-                req.tlsEnabled() == null || req.tlsEnabled(), Boolean.TRUE.equals(req.primary())));
+                props.https() && (req.tlsEnabled() == null || req.tlsEnabled()), Boolean.TRUE.equals(req.primary())));
     }
 
     @PutMapping("/{id}/domains/{domainId}")

@@ -49,6 +49,7 @@ public record PlatformProperties(
         if (dockerBinary == null || dockerBinary.isBlank()) dockerBinary = "docker";
         if (gitBinary == null || gitBinary.isBlank()) gitBinary = "git";
         if (caddyAdminUrl == null) caddyAdminUrl = "";
+        if (platformDomain != null && platformDomain.strip().equalsIgnoreCase("shipyard.example.com")) platformDomain = "";
         if (!https) acmeEmail = "";
         if (platformUpstream == null || platformUpstream.isBlank()) platformUpstream = "shipyard:8080";
         if (workerThreads <= 0) workerThreads = 2;

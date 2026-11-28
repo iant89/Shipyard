@@ -118,7 +118,7 @@ public class ApplicationService {
         repositories.insert(new GitRepository(Ids.uuid(), app.id(), "GITHUB", url, branch,
                 req.accessToken() == null || req.accessToken().isBlank() ? null : cipher.encrypt(req.accessToken().strip()), now, now));
         webhooks.create(app.id());
-        if (req.domains() != null) for (String d : req.domains()) if (d != null && !d.isBlank()) domains.add(app.id(), d, true, false);
+        if (req.domains() != null) for (String d : req.domains()) if (d != null && !d.isBlank()) domains.add(app.id(), d, props.https(), false);
         if (req.environment() != null) for (EnvInput e : req.environment()) environment.set(app.id(), e.name(), e.value(), e.secret());
 
         audit.record(AuditActions.USER_CREATED_APPLICATION, "APPLICATION", app.id(), Map.of("name", app.name(), "repository", url));

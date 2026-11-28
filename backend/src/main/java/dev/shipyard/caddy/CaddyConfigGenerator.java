@@ -23,6 +23,9 @@ public final class CaddyConfigGenerator {
         if (platformDomain != null && !platformDomain.isBlank()) {
             f.append(address(platformDomain.strip(), https)).append(" {\n\timport shipyard_common\n\treverse_proxy ")
                     .append(platformUpstream).append(" {\n\t\tflush_interval -1\n\t}\n}\n\n");
+        } else if (platformUpstream != null && !platformUpstream.isBlank()) {
+            f.append(":80 {\n\timport shipyard_common\n\treverse_proxy ")
+                    .append(platformUpstream).append(" {\n\t\tflush_interval -1\n\t}\n}\n\n");
         }
 
         for (CaddyRoute r : routes) {

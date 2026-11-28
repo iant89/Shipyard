@@ -120,7 +120,7 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 | `SHIPYARD_PUBLIC_URL` | `http://localhost:8080` | Base URL used for webhook URLs |
 | `SHIPYARD_PLATFORM_DOMAIN` | – | Serve the UI through Caddy on this hostname |
 | `SHIPYARD_BASE_DOMAIN` | – | Also serve every app at `<slug>.<base domain>` |
-| `SHIPYARD_HTTPS` | `true` | `false` serves plain HTTP only: no certificates, no 443 listener |
+| `SHIPYARD_HTTPS` | `false` | Plain HTTP by default; `true` enables automatic TLS certificates on port 443 |
 | `SHIPYARD_ACME_EMAIL` | – | Let's Encrypt account email |
 | `SHIPYARD_DATA_DIR` | `/var/lib/shipyard` | Database, repositories, artifacts, Caddyfile |
 | `SHIPYARD_CADDY_ADMIN_URL` | – | `unix:/path/admin.sock` or `http://caddy:2019` |

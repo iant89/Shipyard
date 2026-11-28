@@ -19,6 +19,7 @@ services:
       SHIPYARD_DOCKER_NETWORK: shipyard
       SHIPYARD_CADDY_ADMIN_URL: unix:/run/caddy-admin/admin.sock
       SHIPYARD_PLATFORM_UPSTREAM: shipyard:8080
+      SHIPYARD_HTTPS: ${SHIPYARD_HTTPS:-false}
     volumes:
       # The platform drives Docker. Hosted applications never get this socket.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -33,14 +34,18 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
-    # Start from the last generated configuration; on first boot use the bootstrap file.
+    environment:
+      SHIPYARD_HTTPS: ${SHIPYARD_HTTPS:-false}
+    # Start from the last generated configuration; on first boot (or when switching
+    # to plain HTTP from an old TLS Caddyfile) use the bootstrap file.
     command: >
-      sh -c 'f=/etc/shipyard-caddy/Caddyfile; [ -f "$$f" ] || f=/bootstrap/Caddyfile;
+      sh -c 'f=/etc/shipyard-caddy/Caddyfile;
+             if [ ! -f "$$f" ] || { [ "$${SHIPYARD_HTTPS:-false}" = "false" ] && ! grep -q "auto_https off" "$$f" 2>/dev/null; }; then
+               f=/bootstrap/Caddyfile;
+             fi;
              exec caddy run --config "$$f" --adapter caddyfile'
     ports:
       - "80:80"
-      - "443:443"
-      - "443:443/udp"
     volumes:
       - ./runtime/caddy/Caddyfile:/bootstrap/Caddyfile:ro
       - ${SHIPYARD_HOST_DATA:-/var/lib/shipyard}/caddy:/etc/shipyard-caddy:ro
