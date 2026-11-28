@@ -52,3 +52,21 @@ export function humanize(value: string | null | undefined): string {
   if (!value) return '–';
   return value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
 }
+
+const LOCAL_SUFFIXES = ['.local', '.localhost', '.lan', '.home', '.internal', '.home.arpa', '.localdomain'];
+
+/** Whether a hostname names this server on the local network (mirrors PublicUrls on the server). */
+export function isLocalHostname(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/:].*$/, '');
+  if (!h) return false;
+  return h === 'localhost' || !h.includes('.') || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || LOCAL_SUFFIXES.some((s) => h.endsWith(s));
+}
+
+/**
+ * The URL an application domain is reached at. Local hostnames get Caddy's host
+ * port when it is not 80 (http://devstick.local:8081); public domains never do.
+ */
+export function appUrl(hostname: string, tls: boolean, httpPort?: number | null): string {
+  if (tls) return `https://${hostname}`;
+  return `http://${hostname}${httpPort && httpPort !== 80 && isLocalHostname(hostname) ? `:${httpPort}` : ''}`;
+}

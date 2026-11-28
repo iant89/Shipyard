@@ -251,6 +251,8 @@ export interface PlatformInfo {
   dockerNetwork: string;
   publicUrl: string;
   https: boolean;
+  /** Host port Caddy's HTTP listener is published on; local hostnames' URLs include it when not 80. */
+  httpPort: number;
   platformDomain: string | null;
   baseDomain: string | null;
   dataDir: string;

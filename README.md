@@ -136,6 +136,7 @@ All settings are environment variables (see [`config/shipyard.env.example`](conf
 | `SHIPYARD_CRASH_RESTART_THRESHOLD` | `5` | Restarts before an app is marked CRASHED |
 | `SHIPYARD_ADMIN_USERNAME` / `_PASSWORD` | – | Create the first admin non-interactively |
 | `SHIPYARD_ALLOW_LOCAL_REPOSITORIES` | `false` | Allow `file://` repositories (development) |
+| `SHIPYARD_HTTP_PORT` | detected | Host port Caddy's HTTP listener is published on. Local hostnames (`devstick.local`, `localhost`, `.lan`, IPs…) get it in their URLs when it isn't 80. Read from the Caddy container when unset |
 
 ### Backup
 

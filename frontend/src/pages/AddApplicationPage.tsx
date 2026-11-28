@@ -6,7 +6,8 @@ import {
 } from '@enterprise-ui/react';
 import { api, errorMessage, type ServiceSettings } from '../services/api';
 import type { DetectionPreview } from '../services/types';
-import { humanize, shortSha } from '../services/format';
+import { appUrl, humanize, isLocalHostname, shortSha } from '../services/format';
+import { useResource } from '../hooks/useResource';
 import { appHref } from '../app/platformMode';
 
 interface Draft {
@@ -62,6 +63,10 @@ export function AddApplicationPage() {
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState<string | null>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((cur) => ({ ...cur, [k]: v }));
+  const platform = useResource(() => api.platform.info(), []).data;
+  const host = d.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  // Local names get no certificate (the server turns HTTPS off for them) and carry Caddy's host port when it is not 80.
+  const domainUrl = host ? appUrl(host, !!platform?.https && !isLocalHostname(host), platform?.httpPort) : null;
   const token = d.privateRepo && d.token ? d.token : undefined;
 
   // Run detection whenever the user arrives at the detection step with a new repository/branch.
@@ -255,7 +260,9 @@ export function AddApplicationPage() {
               <div className="sy-stack">
                 <FormGroup columns={2} title="Routing">
                   <Input label="Domain" value={d.domain} onChange={(e) => set('domain', e.target.value)} placeholder="myapp.example.com"
-                    description="Point DNS at this server; Caddy obtains the TLS certificate automatically. More domains can be added later." />
+                    description={host && isLocalHostname(host)
+                      ? `Local hostname: served at ${domainUrl}. Make sure ${host} resolves to this server (mDNS, router DNS or a hosts file).`
+                      : 'Point DNS at this server; Caddy obtains the TLS certificate automatically. More domains can be added later.'} />
                 </FormGroup>
                 <FormGroup columns={2} title="Automation">
                   <Switch label="Automatic deployment" checked={d.autoDeploy} onChange={(v) => set('autoDeploy', v)}
@@ -304,7 +311,7 @@ export function AddApplicationPage() {
                     { term: 'Build', description: `${det?.framework ?? '–'} · ${value(d.buildCommand, det?.buildCommand)}` },
                     { term: 'Runtime', description: effectiveType === 'STATIC' ? `Static files (${value(d.outputDirectory, det?.outputDirectory)}) served by Caddy`
                       : `${value(d.startCommand, det?.startCommand)} on port ${d.port ?? det?.port ?? 8080} · ${d.cpuLimit} CPU · ${d.memoryLimitMb} MB` },
-                    { term: 'Domain', description: d.domain || 'None yet' },
+                    { term: 'Domain', description: domainUrl ?? 'None yet' },
                     { term: 'Webhook', description: d.autoDeploy ? `Automatic deployment on push to ${d.branch}` : 'Manual deployments only' },
                     { term: 'Automatic updates', description: d.autoUpdate ? `Checks ${d.branch} every 90 seconds` : 'Off' },
                     { term: 'Environment', description: `${parseEnv(d.env).length} variable(s)${parseEnv(d.env).length && d.envSecret ? ', secret' : ''}` },

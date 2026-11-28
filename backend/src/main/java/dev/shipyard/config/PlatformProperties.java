@@ -42,7 +42,9 @@ public record PlatformProperties(
         String initialAdminUsername,
         String initialAdminPassword,
         /** Shipyard's own git checkout (mounted read-only by docker compose), used for self-update. */
-        String sourceDir
+        String sourceDir,
+        /** Host port Caddy's HTTP listener is published on, for local hostnames' URLs. Detected from the Caddy container when unset. */
+        Integer httpPort
 ) {
     public PlatformProperties {
         if (dataDir == null || dataDir.isBlank()) dataDir = "/var/lib/shipyard";

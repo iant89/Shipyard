@@ -85,6 +85,7 @@ class PlatformIntegrationTest {
         r.add("shipyard.source-dir", () -> shipyardCheckout.toString());
         r.add("shipyard.data-dir", () -> dataDir.toString());
         r.add("shipyard.auto-update-interval-seconds", () -> "2");
+        r.add("shipyard.http-port", () -> "8081");
         r.add("shipyard.allow-local-repositories", () -> "true");
         r.add("shipyard.public-url", () -> "https://platform.example.com");
     }
@@ -356,6 +357,18 @@ class PlatformIntegrationTest {
         git("commit", "-q", "-am", "sixth");
         Thread.sleep(6000);
         assertThat(deploymentNumbers()).doesNotContain(6);
+    }
+
+    @Test
+    @Order(11)
+    void localHostnamesGetTheHttpPortInTheirUrl() throws Exception {
+        mvc.perform(post("/api/applications/" + appId + "/domains").session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"hostname\":\"devstick.local\"}")).andExpect(status().isCreated()).andExpect(jsonPath("$.tlsEnabled").value(false));
+        JsonNode urls = json(mvc.perform(get("/api/applications/" + appId).session(session)).andReturn()).path("summary").path("urls");
+        List<String> list = new java.util.ArrayList<>();
+        urls.forEach(u -> list.add(u.asText()));
+        assertThat(list).contains("http://devstick.local:8081", "http://site.example.com");
+        mvc.perform(get("/api/platform/info").session(session)).andExpect(jsonPath("$.httpPort").value(8081));
     }
 
     private List<Integer> deploymentNumbers() throws Exception {

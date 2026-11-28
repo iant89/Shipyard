@@ -3,7 +3,7 @@ import { AlertDialog, Badge, Button, Dialog, Form, Icon, IconButton, Input, Link
 import { api } from '../../services/api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import type { ApplicationDetail, Domain } from '../../services/types';
-import { formatDateTime } from '../../services/format';
+import { appUrl, formatDateTime, isLocalHostname } from '../../services/format';
 import { useResource } from '../../hooks/useResource';
 
 /** Domain management (spec section 28). Caddy obtains certificates automatically for TLS domains. */
@@ -11,10 +11,14 @@ export function DomainsTab({ detail, onChange }: { detail: ApplicationDetail; on
   const a = detail.summary;
   const { busy, run } = useAsyncAction();
   // When the platform serves plain HTTP, per-domain HTTPS switches do nothing.
-  const httpsEnabled = useResource(() => api.platform.info(), []).data?.https !== false;
+  const info = useResource(() => api.platform.info(), []).data;
+  const httpsEnabled = info?.https !== false;
   const [adding, setAdding] = useState(false);
   const [hostname, setHostname] = useState('');
-  const [tls, setTls] = useState(true);
+  // Until chosen: off for local names (no public certificate for devstick.local), on otherwise.
+  const [tlsChoice, setTlsChoice] = useState<boolean | null>(null);
+  const tls = tlsChoice ?? !isLocalHostname(hostname);
+  const preview = hostname.trim() && isLocalHostname(hostname) ? appUrl(hostname.trim().toLowerCase(), tls && httpsEnabled, info?.httpPort) : null;
   const [removing, setRemoving] = useState<Domain | null>(null);
 
   const add = async (e: React.FormEvent) => {
@@ -23,6 +27,7 @@ export function DomainsTab({ detail, onChange }: { detail: ApplicationDetail; on
     if (r) {
       setAdding(false);
       setHostname('');
+      setTlsChoice(null);
       onChange();
     }
   };
@@ -30,7 +35,7 @@ export function DomainsTab({ detail, onChange }: { detail: ApplicationDetail; on
   const columns: TableColumn<Domain>[] = [
     { id: 'host', header: 'Hostname', rowHeader: true, cell: (d) => (
       <span className="sy-row">
-        <Link href={`${d.tlsEnabled && httpsEnabled ? 'https' : 'http'}://${d.hostname}`} target="_blank" rel="noreferrer">{d.hostname}</Link>
+        <Link href={appUrl(d.hostname, d.tlsEnabled && httpsEnabled, info?.httpPort)} target="_blank" rel="noreferrer">{d.hostname}</Link>
         {d.primary && <Badge tone="information">Primary</Badge>}
       </span>
     ) },
@@ -65,8 +70,9 @@ export function DomainsTab({ detail, onChange }: { detail: ApplicationDetail; on
       <Dialog open={adding} onClose={() => setAdding(false)} title="Add domain" size="sm"
         footer={<><Button onClick={() => setAdding(false)}>Cancel</Button><Button variant="primary" type="submit" form="domain-form" loading={busy === 'add'}>Add</Button></>}>
         <Form id="domain-form" onSubmit={add} aria-label="Add domain">
-          <Input label="Hostname" required value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="www.example.com" autoFocus />
-          <Switch label="HTTPS (automatic certificate)" checked={tls && httpsEnabled} disabled={!httpsEnabled} onChange={setTls} />
+          <Input label="Hostname" required value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="www.example.com" autoFocus
+            description={preview ? `Local hostname: served at ${preview}` : undefined} />
+          <Switch label="HTTPS (automatic certificate)" checked={tls && httpsEnabled} disabled={!httpsEnabled} onChange={setTlsChoice} />
         </Form>
       </Dialog>
       <AlertDialog open={!!removing} tone="error" title={`Remove ${removing?.hostname}?`} confirmLabel="Remove" onCancel={() => setRemoving(null)}

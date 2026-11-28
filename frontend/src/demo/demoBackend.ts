@@ -7,6 +7,7 @@
  */
 import type { api as realApi, CreateApplicationRequest, ServiceSettings, UpdateApplicationRequest } from '../services/api';
 import type { EventTransport } from '../services/events';
+import { appUrl, isLocalHostname } from '../services/format';
 import type {
   ApplicationDetail, ApplicationStatus, ApplicationSummary, AuditEvent, DetectionPreview, DetectionResult, Deployment, DeploymentSource,
   DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck, PlatformUpdateStatus, PlatformVersion,
@@ -18,6 +19,8 @@ type Listener = (e: PlatformEvent) => void;
 // ---------------------------------------------------------------- helpers
 
 const MIN = 60_000;
+/** The demo pretends Caddy is published on host port 8081, so local hostnames show the port. */
+const DEMO_HTTP_PORT = 8081;
 const now = () => Date.now();
 const iso = (t: number) => new Date(t).toISOString();
 let idSeq = 0;
@@ -383,13 +386,13 @@ function requestLogLine(a: AppState): string {
 
 function summary(a: AppState): ApplicationSummary {
   const current = a.deployments.find((d) => d.id === a.currentId) ?? null;
-  const urls = a.domains.map((d) => `${d.tlsEnabled ? 'https' : 'http'}://${d.hostname}`);
+  const urls = a.domains.map((d) => appUrl(d.hostname, d.tlsEnabled, DEMO_HTTP_PORT));
   const primary = a.domains.find((d) => d.primary);
   return {
     id: a.id, slug: a.slug, name: a.name, description: a.description, status: a.status,
     repository: { provider: 'GITHUB', url: `https://github.com/${a.repo}.git`, fullName: a.repo, branch: a.branch, privateRepository: a.privateRepo },
     currentDeployment: current, latestDeployment: a.deployments[0] ?? null,
-    primaryUrl: primary ? `${primary.tlsEnabled ? 'https' : 'http'}://${primary.hostname}` : urls[0] ?? null, urls,
+    primaryUrl: primary ? appUrl(primary.hostname, primary.tlsEnabled, DEMO_HTTP_PORT) : urls[0] ?? null, urls,
     metrics: a.profile.kind === 'SERVER' && a.currentId && a.status !== 'STOPPED' ? a.metrics[a.metrics.length - 1] ?? null : null,
     projectType: a.profile.kind, framework: a.profile.framework, autoDeploy: a.autoDeploy, autoUpdate: a.autoUpdate, updatedAt: a.updatedAt,
   };
@@ -797,7 +800,7 @@ export function createDemoApi(): Api {
         privateRepo: !!body.accessToken, autoDeploy: body.autoDeploy, autoUpdate: !!body.autoUpdate, autoRollback: true, cancelStaleBuilds: true, profile: p,
         service: serviceFor(id, p, body.service), currentId: null, deployments: [], logs: new Map(),
         branchCommits: [{ sha: sha(), author: pick(AUTHORS), message: pick(MESSAGES), timestamp: t }],
-        domains: body.domains.map((h, i) => ({ id: uid('dom'), applicationId: id, hostname: h.toLowerCase(), tlsEnabled: true, primary: i === 0, createdAt: t })),
+        domains: body.domains.map((h, i) => ({ id: uid('dom'), applicationId: id, hostname: h.toLowerCase(), tlsEnabled: !isLocalHostname(h), primary: i === 0, createdAt: t })),
         env: body.environment.map((e) => ({ ...e, updatedAt: t })), webhookEndpoint: sha(), webhookSecret: sha() + sha().slice(0, 24),
         deployOnPush: true, webhookEvents: [], metrics: [], queue: [], busy: false, cancelRequested: null, createdAt: t, updatedAt: t,
       };
@@ -1042,7 +1045,7 @@ export function createDemoApi(): Api {
       info: () => wrap(() => ({
         name: 'Shipyard', version: 'demo', dockerAvailable: true, dockerVersion: '27.3.1', dockerNetwork: 'shipyard',
         publicUrl: 'https://shipyard.example.com', https: true, platformDomain: 'shipyard.example.com', baseDomain: null, dataDir: '/var/lib/shipyard',
-        caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
+        httpPort: DEMO_HTTP_PORT, caddyAdminConfigured: true, caddyStatus: `Applied at ${iso(now() - 4 * MIN)}`, workerThreads: 2, retainDeployments: 10,
       })),
       caddy: () => wrap(() => ({ config: caddyfile(), status: `Applied at ${iso(now() - 4 * MIN)}` })),
       metrics: () => wrap(() => ({ latest: hostHistory[hostHistory.length - 1], history: hostHistory })),

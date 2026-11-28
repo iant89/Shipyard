@@ -17,6 +17,7 @@ import dev.shipyard.detection.DetectionResult;
 import dev.shipyard.detection.DetectionService;
 import dev.shipyard.domains.Domain;
 import dev.shipyard.domains.DomainService;
+import dev.shipyard.domains.PublicUrls;
 import dev.shipyard.environment.EnvironmentService;
 import dev.shipyard.events.EventBus;
 import dev.shipyard.logging.LogLine;
@@ -324,7 +325,9 @@ public class ApplicationController {
     ResponseEntity<Domain> addDomain(@PathVariable String id, @RequestBody DomainRequest req) {
         applications.get(id);
         return ResponseEntity.status(HttpStatus.CREATED).body(domains.add(id, req.hostname(),
-                props.https() && (req.tlsEnabled() == null || req.tlsEnabled()), Boolean.TRUE.equals(req.primary())));
+                // Caddy cannot get a public certificate for a local name: HTTPS is off unless asked for.
+                props.https() && (req.tlsEnabled() == null ? !PublicUrls.isLocalHostname(DomainService.normalize(req.hostname())) : req.tlsEnabled()),
+                Boolean.TRUE.equals(req.primary())));
     }
 
     @PutMapping("/{id}/domains/{domainId}")
