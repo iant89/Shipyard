@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertDialog, Button, Card, DescriptionList, Icon, Link, MessageStrip, RadioGroup, StatusIndicator } from '@enterprise-ui/react';
 import { api } from '../../services/api';
 import { useResource } from '../../hooks/useResource';
@@ -13,11 +14,11 @@ const RECENT_MS = 7 * 24 * 3600_000;
  * branch, and a one-click update with progress through the restart.
  */
 export function ShipyardUpdatesCard() {
+  const navigate = useNavigate();
   const version = useResource(() => api.platform.version(), []);
   const { busy, run } = useAsyncAction();
   const [selected, setSelected] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [showLog, setShowLog] = useState(false);
   const v = version.data;
   const progress = useUpdateProgress(v?.update);
   const update = progress.status;
@@ -40,6 +41,8 @@ export function ShipyardUpdatesCard() {
     if (s) {
       markUpdatePending(selected);
       version.setData({ ...v!, update: s });
+      // Follow the update on its own screen: live log, status, and a reload when it finishes.
+      navigate('/settings/update');
     }
   };
 
@@ -53,10 +56,11 @@ export function ShipyardUpdatesCard() {
     <Card id="updates" title="Shipyard updates" headerActions={headerStatus}>
       <div className="sy-stack">
         {recent && <PlatformUpdateStrip progress={progress} signedIn />}
-        {recent && update.log.length > 0 && (
+        {recent && (
           <div>
-            <Button size="sm" variant="tertiary" onClick={() => setShowLog((s) => !s)}>{showLog ? 'Hide update log' : 'Show update log'}</Button>
-            {showLog && <pre className="sy-code-block" style={{ maxHeight: 320, overflow: 'auto' }}>{update.log.join('\n')}</pre>}
+            <Button size="sm" variant="tertiary" icon={<Icon name="process" />} onClick={() => navigate('/settings/update')}>
+              {running ? 'View update progress' : 'Open update screen'}
+            </Button>
           </div>
         )}
 
@@ -104,7 +108,8 @@ export function ShipyardUpdatesCard() {
 
       <AlertDialog open={confirming} tone="warning" title={`Update Shipyard to ${shortSha(selected)}?`} confirmLabel="Update"
         onCancel={() => setConfirming(false)} onConfirm={start}>
-        Shipyard builds the new version first, then restarts. The interface is unavailable for a minute or two and you will need to
+        Shipyard builds the new version first, then restarts. You can follow the update on the progress screen, which reloads the
+        page when the update finishes. The interface is unavailable for a minute or two and you will need to
         sign in again; your applications keep running. If the new version does not start, Shipyard rolls back to {shortSha(v?.commit)}.
       </AlertDialog>
     </Card>

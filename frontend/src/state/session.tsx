@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, UNAUTHORIZED_EVENT } from '../services/api';
 import { closeAllStreams } from '../services/events';
+import { updateInProgress } from '../components/PlatformUpdateProgress';
 import type { AuthStatus } from '../services/types';
 
 interface Session {
@@ -32,6 +33,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
     const onUnauthorized = () => {
+      // Updating Shipyard restarts it and invalidates the session on purpose.
+      // Stay signed in (the update screen needs no session) until the update
+      // finishes and the page reloads; then the sign-in screen appears.
+      if (updateInProgress()) return;
       closeAllStreams();
       setStatus((s) => (s ? { ...s, authenticated: false, username: null } : s));
     };

@@ -111,7 +111,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
               id: 'shipyard-update',
               priority: 2,
               content: (
-                <Button size="sm" variant="tertiary" icon={<Icon name="download" />} onClick={() => navigate('/settings#updates')}
+                <Button size="sm" variant="tertiary" icon={<Icon name="download" />} onClick={() => navigate(updating ? '/settings/update' : '/settings#updates')}
                   aria-label={updating ? 'Shipyard is updating' : `Shipyard update available (${updates} new commit${updates === 1 ? '' : 's'})`}>
                   {updating ? 'Updating…' : 'Update available'}
                 </Button>
