@@ -271,3 +271,24 @@ export interface PlatformEvent {
   data: Record<string, unknown>;
   timestamp: string;
 }
+
+/** A commit on the application's branch (newest first in lists). */
+export interface CommitInfo {
+  sha: string;
+  author: string;
+  message: string;
+  timestamp: string;
+}
+
+/** Whether newer commits than the running one exist on the configured branch. */
+export interface UpdateCheck {
+  status: 'UP_TO_DATE' | 'BEHIND' | 'NOT_DEPLOYED' | 'UNAVAILABLE';
+  branch: string;
+  currentSha: string | null;
+  latestSha: string | null;
+  /** Total number of newer commits; `commits` holds at most the 20 newest. */
+  behind: number;
+  commits: CommitInfo[];
+  checkedAt: string;
+  message: string | null;
+}

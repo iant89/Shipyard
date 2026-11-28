@@ -232,6 +232,35 @@ class PlatformIntegrationTest {
         assertThat(logs.path("deployment").toString()).contains("remains online");
     }
 
+    @Test
+    @Order(7)
+    void reportsNewerCommitsThanTheRunningOne() throws Exception {
+        // #1 ("first") is running; "second", "third" and "break it" have been pushed since.
+        JsonNode u = json(mvc.perform(get("/api/applications/" + appId + "/updates").session(session)).andExpect(status().isOk()).andReturn());
+        assertThat(u.path("status").asText()).isEqualTo("BEHIND");
+        assertThat(u.path("branch").asText()).isEqualTo("main");
+        assertThat(u.path("behind").asInt()).isEqualTo(3);
+        assertThat(u.path("latestSha").asText()).isEqualTo(git("rev-parse", "HEAD"));
+        List<String> messages = new java.util.ArrayList<>();
+        u.path("commits").forEach(c -> messages.add(c.path("message").asText()));
+        assertThat(messages).containsExactly("break it", "third", "second");
+        assertThat(u.path("commits").get(0).path("author").asText()).isEqualTo("Test");
+
+        // Cached until refreshed.
+        Files.writeString(repo.resolve("README.md"), "still nothing to build");
+        git("commit", "-q", "-am", "fourth");
+        mvc.perform(get("/api/applications/" + appId + "/updates").session(session)).andExpect(jsonPath("$.behind").value(3));
+        mvc.perform(get("/api/applications/" + appId + "/updates?refresh=true").session(session))
+                .andExpect(jsonPath("$.behind").value(4)).andExpect(jsonPath("$.commits[0].message").value("fourth"));
+
+        // Running the branch head means up to date.
+        String head = git("rev-parse", "HEAD");
+        git("reset", "-q", "--hard", u.path("currentSha").asText());
+        mvc.perform(get("/api/applications/" + appId + "/updates?refresh=true").session(session))
+                .andExpect(jsonPath("$.status").value("UP_TO_DATE")).andExpect(jsonPath("$.behind").value(0));
+        git("reset", "-q", "--hard", head);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static byte[] push(String branch, String sha, String fullName) {

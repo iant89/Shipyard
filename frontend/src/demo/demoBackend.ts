@@ -9,7 +9,7 @@ import type { api as realApi, CreateApplicationRequest, ServiceSettings, UpdateA
 import type { EventTransport } from '../services/events';
 import type {
   ApplicationDetail, ApplicationStatus, ApplicationSummary, AuditEvent, DetectionPreview, DetectionResult, Deployment, DeploymentSource,
-  DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView,
+  DeploymentStatus, Domain, EnvVar, LogLine, MetricSample, PlatformEvent, ServiceConfig, WebhookEvent, WebhookView, CommitInfo, UpdateCheck,
 } from '../services/types';
 
 type Api = typeof realApi;
@@ -75,6 +75,8 @@ interface AppState {
   service: ServiceConfig;
   currentId: string | null;
   deployments: Deployment[]; // newest first
+  /** Commits on the configured branch, newest first (what `git log` on the remote would show). */
+  branchCommits: CommitInfo[];
   logs: Map<string, { build: LogLine[]; deployment: LogLine[] }>;
   domains: Domain[];
   env: { name: string; value: string; secret: boolean; updatedAt: string }[];
@@ -211,7 +213,7 @@ function seedLogs(a: AppState, d: Deployment) {
 }
 
 function seedApp(name: string, repo: string, profile: Profile, count: number, opts: {
-  domains: string[]; failedLatest?: boolean; neverHealthy?: boolean; description?: string; env?: AppState['env']; crashed?: boolean;
+  domains: string[]; pendingCommits?: number; failedLatest?: boolean; neverHealthy?: boolean; description?: string; env?: AppState['env']; crashed?: boolean;
 }): AppState {
   const created = now() - (count + 3) * 26 * 3600_000;
   // Stable ids so links into the demo survive a reload.
@@ -219,7 +221,7 @@ function seedApp(name: string, repo: string, profile: Profile, count: number, op
   const a: AppState = {
     id, slug: slugify(name), name, description: opts.description ?? null, status: 'RUNNING', repo, branch: 'main', privateRepo: false,
     autoDeploy: true, autoRollback: true, cancelStaleBuilds: true, profile, service: serviceFor(id, profile), currentId: null,
-    deployments: [], logs: new Map(), domains: [], env: opts.env ?? [], webhookEndpoint: sha().slice(0, 40), webhookSecret: sha().slice(0, 64),
+    deployments: [], branchCommits: [], logs: new Map(), domains: [], env: opts.env ?? [], webhookEndpoint: sha().slice(0, 40), webhookSecret: sha().slice(0, 64),
     deployOnPush: true, webhookEvents: [], metrics: [], queue: [], busy: false, cancelRequested: null, createdAt: iso(created), updatedAt: iso(now() - 40 * MIN),
   };
   opts.domains.forEach((h, i) => a.domains.push({ id: uid('dom'), applicationId: id, hostname: h, tlsEnabled: true, primary: i === 0, createdAt: iso(created) }));
@@ -250,12 +252,17 @@ function seedApp(name: string, repo: string, profile: Profile, count: number, op
       a.currentId = d.id;
     }
     a.deployments.unshift(d);
+    a.branchCommits.unshift({ sha: d.commitSha!, author: d.commitAuthor!, message: d.commitMessage!, timestamp: d.createdAt });
     seedLogs(a, d);
     if (source === 'WEBHOOK') {
       a.webhookEvents.unshift(webhookEvent(a, d.commitSha!, d.commitAuthor!, d.commitMessage!, fail ? 'FAILED' : 'DEPLOYED', d.id, fail ? d.error : null, at - 500));
     }
     record('DEPLOYMENT_STARTED', 'DEPLOYMENT', d.id, { application: a.slug, number: d.number, source }, at);
     record(fail ? 'DEPLOYMENT_FAILED' : 'DEPLOYMENT_COMPLETED', 'DEPLOYMENT', d.id, { application: a.slug, number: d.number }, new Date(d.finishedAt!).getTime());
+  }
+  // Pushed but not deployed yet (automatic deployment would normally pick these up).
+  for (let i = opts.pendingCommits ?? 0; i > 0; i--) {
+    a.branchCommits.unshift({ sha: sha(), author: pick(AUTHORS), message: pick(MESSAGES), timestamp: iso(now() - i * 47 * MIN) });
   }
   // A couple of ignored pushes to other branches
   a.webhookEvents.splice(1, 0, { ...webhookEvent(a, sha(), 'grace', 'WIP: experiment', 'IGNORED', null, `Push to feature/redesign ignored (deployment branch is main)`, now() - 7 * 3600_000), branch: 'feature/redesign' });
@@ -305,7 +312,7 @@ function hostSample(t: number, i: number): MetricSample {
 function seed() {
   if (apps.length) return;
   seedApp('Marketing Site', 'iant89/marketing-site', PROFILES.vite, 14, {
-    domains: ['www.example.com', 'example.com'], description: 'Public website',
+    domains: ['www.example.com', 'example.com'], description: 'Public website', pendingCommits: 1,
     env: [{ name: 'VITE_API_URL', value: 'https://api.example.com', secret: false, updatedAt: iso(now() - 9 * 86400_000) }],
   });
   seedApp('Orders API', 'iant89/orders-api', PROFILES.spring, 22, {
@@ -316,7 +323,7 @@ function seed() {
       { name: 'SPRING_PROFILES_ACTIVE', value: 'prod', secret: false, updatedAt: iso(now() - 30 * 86400_000) },
     ],
   });
-  seedApp('Devyard', 'iant89/devyard', PROFILES.express, 9, { domains: ['devyard.example.com'], description: 'Developer portal' });
+  seedApp('Devyard', 'iant89/devyard', PROFILES.express, 9, { domains: ['devyard.example.com'], description: 'Developer portal', pendingCommits: 3 });
   seedApp('Docs', 'iant89/docs', PROFILES.astro, 6, { domains: ['docs.example.com'] });
   seedApp('Image Resizer', 'iant89/image-resizer', PROFILES.go, 5, { domains: ['img.example.com'], crashed: true });
   seedApp('Legacy Billing', 'iant89/legacy-billing', PROFILES.docker, 2, { domains: [], neverHealthy: true, description: 'Migrating from the old VM' });
@@ -655,8 +662,12 @@ async function runRollback(a: AppState, marker: Deployment) {
 
 function requestDeployment(a: AppState, source: DeploymentSource, ref?: string, message?: string, author?: string): Deployment {
   const d = newDeployment(a, source, now());
-  if (ref && /^[0-9a-f]{7,40}$/i.test(ref)) d.commitSha = ref.padEnd(40, '0');
+  const isSha = !!ref && /^[0-9a-f]{7,40}$/i.test(ref);
+  if (isSha) d.commitSha = ref.padEnd(40, '0');
   else if (ref) d.branch = ref;
+  // The branch head, or the named commit, with its real message and author.
+  const known = !ref ? a.branchCommits[0] : isSha ? a.branchCommits.find((c) => c.sha.startsWith(ref.toLowerCase())) : undefined;
+  if (known) Object.assign(d, { commitSha: known.sha, commitMessage: known.message, commitAuthor: known.author });
   if (message) d.commitMessage = message;
   if (author) d.commitAuthor = author;
   d.framework = a.profile.framework;
@@ -674,6 +685,7 @@ export function simulatePush(applicationId: string, failing = false): Deployment
   const message = failing ? 'Refactor startup (this one will break the health check)' : pick(MESSAGES);
   const author = pick(AUTHORS);
   const commit = sha();
+  a.branchCommits.unshift({ sha: commit, author, message, timestamp: iso(now()) });
   const event = webhookEvent(a, commit, author, message, 'RECEIVED', null, null, now());
   a.webhookEvents.unshift(event);
   emit('WebhookReceived', a.id, null, { eventId: event.id, type: 'push' });
@@ -721,6 +733,7 @@ export function createDemoApi(): Api {
         id, slug, name: body.name || repo.split('/')[1], description: body.description ?? null, status: 'CREATED', repo, branch: body.branch,
         privateRepo: !!body.accessToken, autoDeploy: body.autoDeploy, autoRollback: true, cancelStaleBuilds: true, profile: p,
         service: serviceFor(id, p, body.service), currentId: null, deployments: [], logs: new Map(),
+        branchCommits: [{ sha: sha(), author: pick(AUTHORS), message: pick(MESSAGES), timestamp: t }],
         domains: body.domains.map((h, i) => ({ id: uid('dom'), applicationId: id, hostname: h.toLowerCase(), tlsEnabled: true, primary: i === 0, createdAt: t })),
         env: body.environment.map((e) => ({ ...e, updatedAt: t })), webhookEndpoint: sha(), webhookSecret: sha() + sha().slice(0, 24),
         deployOnPush: true, webhookEvents: [], metrics: [], queue: [], busy: false, cancelRequested: null, createdAt: t, updatedAt: t,
@@ -811,6 +824,18 @@ export function createDemoApi(): Api {
     }),
     detect: (id) => wrap(() => { const a = findApp(id); return detection(a.profile, a.service); }, 900),
     branches: () => wrap(() => ['main', 'develop', 'feature/redesign']),
+    updates: (id) => wrap(() => {
+      const a = findApp(id);
+      const cur = a.deployments.find((d) => d.id === a.currentId);
+      const base = { branch: a.branch, checkedAt: iso(now()), message: null };
+      if (!cur?.commitSha) return { ...base, status: 'NOT_DEPLOYED', currentSha: null, latestSha: null, behind: 0, commits: [] } satisfies UpdateCheck;
+      const idx = a.branchCommits.findIndex((c) => c.sha === cur.commitSha);
+      const newer = idx === -1 ? a.branchCommits : a.branchCommits.slice(0, idx);
+      return {
+        ...base, status: newer.length ? 'BEHIND' : 'UP_TO_DATE', currentSha: cur.commitSha, latestSha: a.branchCommits[0]?.sha ?? cur.commitSha,
+        behind: newer.length, commits: newer.slice(0, 20),
+      } satisfies UpdateCheck;
+    }, 500),
     deployments: (id, limit = 50) => wrap(() => findApp(id).deployments.filter((d) => d.number > 0).slice(0, limit)),
     deployment: (id, dep) => wrap(() => findDeployment(findApp(id), dep)),
     cancelDeployment: (id, dep) => wrap(() => {

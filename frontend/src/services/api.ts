@@ -1,6 +1,6 @@
 import type {
   ApplicationDetail, ApplicationMetrics, ApplicationSummary, AuditEvent, AuthStatus, DashboardData, Deployment,
-  DetectionPreview, DetectionResult, Domain, EnvVar, LogLine, MetricSample, PlatformInfo, WebhookEvent, WebhookTestResult, WebhookView,
+  DetectionPreview, DetectionResult, Domain, EnvVar, LogLine, MetricSample, PlatformInfo, UpdateCheck, WebhookEvent, WebhookTestResult, WebhookView,
 } from './types';
 
 /** Error raised for non-2xx API responses; `message` carries the server's problem detail. */
@@ -139,6 +139,7 @@ export const api = {
     rollback: (id: string, deploymentId?: string) => post<Deployment>(`${app(id)}/rollback`, deploymentId ? { deploymentId } : {}),
     detect: (id: string) => post<DetectionResult>(`${app(id)}/detect`),
     branches: (id: string) => get<string[]>(`${app(id)}/branches`),
+    updates: (id: string, refresh = false) => get<UpdateCheck>(`${app(id)}/updates${refresh ? '?refresh=true' : ''}`),
     deployments: (id: string, limit = 50) => get<Deployment[]>(`${app(id)}/deployments?limit=${limit}`),
     deployment: (id: string, deploymentId: string) => get<Deployment>(`${app(id)}/deployments/${encodeURIComponent(deploymentId)}`),
     cancelDeployment: (id: string, deploymentId: string) => post<void>(`${app(id)}/deployments/${encodeURIComponent(deploymentId)}/cancel`),
