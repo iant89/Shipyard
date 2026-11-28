@@ -24,6 +24,7 @@ import dev.shipyard.logging.LogService;
 import dev.shipyard.metrics.MetricSample;
 import dev.shipyard.metrics.MetricsService;
 import dev.shipyard.repositories.GitRepositoryStore;
+import dev.shipyard.repositories.UpdateChecker;
 import dev.shipyard.runtime.ContainerInfo;
 import dev.shipyard.runtime.ContainerRuntime;
 import dev.shipyard.security.SecretMasker;
@@ -73,12 +74,14 @@ public class ApplicationController {
     private final EventBus events;
     private final AuditService audit;
     private final PlatformProperties props;
+    private final UpdateChecker updates;
 
     public ApplicationController(ApplicationRepository applications, ApplicationService service, ApplicationViews views,
                                  DeploymentService deploymentService, DeploymentRepository deployments, ServiceRepository services,
                                  GitRepositoryStore repositories, DomainService domains, EnvironmentService environment,
                                  WebhookService webhooks, LogService logs, MetricsService metrics, ContainerRuntime runtime,
-                                 DetectionService detection, EventBus events, AuditService audit, PlatformProperties props) {
+                                 DetectionService detection, EventBus events, AuditService audit, PlatformProperties props,
+                                 UpdateChecker updates) {
         this.applications = applications;
         this.service = service;
         this.views = views;
@@ -96,6 +99,7 @@ public class ApplicationController {
         this.events = events;
         this.audit = audit;
         this.props = props;
+        this.updates = updates;
     }
 
     // ------------------------------------------------------------------ CRUD
@@ -164,6 +168,12 @@ public class ApplicationController {
     @PostMapping("/{id}/detect")
     DetectionResult detect(@PathVariable String id) {
         return detection.detectFor(repositories.forApplication(id), services.primary(id));
+    }
+
+    /** Whether newer commits than the running one are on the configured branch. Fetches from the remote (cached ~60 s). */
+    @GetMapping("/{id}/updates")
+    UpdateChecker.UpdateCheck updates(@PathVariable String id, @RequestParam(defaultValue = "false") boolean refresh) {
+        return updates.check(id, refresh);
     }
 
     @GetMapping("/{id}/branches")

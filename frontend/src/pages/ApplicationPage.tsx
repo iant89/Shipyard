@@ -9,6 +9,8 @@ import { api } from '../services/api';
 import { ApplicationStatus } from '../components/ApplicationStatus';
 import { shortSha } from '../services/format';
 import { DeployDialog } from './application/DeployDialog';
+import { UpdateBanner } from './application/UpdateBanner';
+import { isActive } from '../components/DeploymentStatus';
 import { OverviewTab } from './application/OverviewTab';
 import { DeploymentsTab } from './application/DeploymentsTab';
 import { LogsTab } from './application/LogsTab';
@@ -116,6 +118,9 @@ export function ApplicationPage() {
           {latest.error}{current ? ` Deployment #${current.number} is still serving traffic.` : ''}
         </MessageStrip>
       )}
+      <UpdateBanner applicationId={id} currentDeploymentId={current?.id ?? null} deploying={!!latest && isActive(latest.status)}
+        failed={latest?.status === 'FAILED' && latest.id !== current?.id ? { sha: latest.commitSha, number: latest.number } : null}
+        onDeployed={(d) => { app.reload(); navigate(`/applications/${id}/deployments/${d.id}`); }} />
       {a.status === 'CRASHED' && (
         <MessageStrip tone="error" title="Application crashed">
           The container keeps exiting ({detail.service.restartCount} restarts). Check the logs, then restart or redeploy.

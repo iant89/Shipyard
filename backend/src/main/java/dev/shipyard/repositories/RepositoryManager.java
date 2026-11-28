@@ -124,6 +124,34 @@ public class RepositoryManager {
         return r.output().strip();
     }
 
+    /** Commits on a branch that a given commit does not contain, newest first. */
+    public record NewerCommits(String headSha, int total, List<CommitInfo> commits) {}
+
+    /**
+     * Fetches the repository, then lists the commits on the configured branch
+     * that {@code sinceSha} does not contain (up to {@code limit}, newest first;
+     * {@code total} is the full count). If {@code sinceSha} is not an ancestor
+     * of the branch (another branch was deployed, or history was rewritten),
+     * this is every branch commit since the two histories split.
+     */
+    public NewerCommits newerCommits(GitRepository repo, String sinceSha, int limit) {
+        if (!SHA.matcher(sinceSha).matches()) throw new BadRequestException("Invalid commit: " + sinceSha);
+        Path dir = cloneOrFetch(repo, line -> { }, new CancellationToken());
+        String ref = "refs/remotes/origin/" + repo.branch();
+        String head = git(dir, Map.of(), "rev-parse", "--verify", ref + "^{commit}").strip();
+        String range = sinceSha + ".." + head;
+        int total = Integer.parseInt(git(dir, Map.of(), "rev-list", "--count", range, "--").strip());
+        List<CommitInfo> commits = new ArrayList<>();
+        if (total > 0) {
+            String out = git(dir, Map.of(), "log", "-n", String.valueOf(limit), "--format=%H%x1f%an%x1f%cI%x1f%s%x1e", range, "--");
+            for (String rec : out.split("\u001e")) {
+                String[] f = rec.strip().split("\u001f", 4);
+                if (f.length == 4) commits.add(new CommitInfo(f[0], f[1], f[3].strip(), f[2]));
+            }
+        }
+        return new NewerCommits(head, total, commits);
+    }
+
     public CommitInfo getCommit(String applicationId, String sha) {
         String out = git(layout.repository(applicationId), Map.of(), "log", "-1", "--format=%H%n%an%n%cI%n%s", sha);
         String[] lines = out.split("\n", 4);
