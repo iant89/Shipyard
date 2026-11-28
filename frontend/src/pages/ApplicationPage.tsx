@@ -80,6 +80,7 @@ export function ApplicationPage() {
           )}
           <OverflowMenu
             label="More actions"
+            placement="bottom-end"
             items={[
               { id: 'open', label: 'Open application', icon: <Icon name="internet-browser" />, disabled: !a.primaryUrl },
               { id: 'rollback', label: 'Roll back to previous deployment', icon: <Icon name="undo" />, disabled: !current },
